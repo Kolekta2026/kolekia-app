@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Kolekia",
+    "NSCameraUsageDescription": "Kolekia needs camera access to photograph your items.",
+    "NSPhotoLibraryUsageDescription": "Kolekia needs access to your photos to add pictures to your items.",
+    "NSFaceIDUsageDescription": "Kolekia uses Face ID to unlock the app."
+  }
+}

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="tr" data-lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kolekta</title>
+<meta name="apple-itunes-app" content="app-id=6816333352">
+<meta name="description" content="Kolekta — koleksiyonların için sade bir arşiv. A simple archive for everything you collect.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 140 140'%3E%3Crect width='140' height='140' fill='%23000'/%3E%3Cpolygon points='32,32%2052,32%2052,62%2082,32%20108,32%2070,70%20108,108%2082,108%2052,78%2052,108%2032,108' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#000;--paper:#fff;--grey:#6f6f6f;--line:#e0e0e0;--soft:#f2f2f2;--accent:#2E3BFF}
+@media (prefers-color-scheme:dark){:root{--ink:#fff;--paper:#000;--grey:#9a9a9a;--line:#2a2a2a;--soft:#161616;--accent:#6B75FF}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:'Archivo',-apple-system,'Helvetica Neue',Arial,sans-serif;font-size:17px;line-height:1.6}
+a{color:inherit;text-decoration-thickness:1.5px;text-underline-offset:3px}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.wrap{max-width:760px;margin:0 auto;padding:0 24px}
+header{display:flex;justify-content:space-between;align-items:center;padding:22px 0}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:800;font-size:20px;letter-spacing:-.4px}
+.mark{width:30px;height:30px;display:block}
+.mark-bg{fill:var(--ink)}.mark-fg{fill:var(--paper)}
+.lang{display:flex;gap:4px}
+.lang button{font:inherit;font-size:14px;font-weight:600;background:none;border:1.5px solid transparent;color:var(--grey);padding:5px 10px;cursor:pointer}
+.lang button[aria-pressed="true"]{border-color:var(--ink);color:var(--ink)}
+html[data-lang="tr"] .en, html[data-lang="en"] .tr{display:none}
+.hero{padding:48px 0 40px;border-bottom:4px solid var(--ink)}
+.word{font-weight:900;font-size:clamp(84px,22vw,176px);line-height:.86;letter-spacing:-.055em;margin:0}
+.tagline{font-weight:800;font-size:clamp(24px,5vw,34px);line-height:1.15;letter-spacing:-.02em;margin:28px 0 14px;max-width:18ch}
+.lead{color:var(--grey);max-width:56ch;margin:0}
+.stores{display:flex;flex-wrap:wrap;align-items:center;gap:14px 18px;margin-top:28px}
+.badge{display:inline-block;line-height:0;text-decoration:none}
+.badge img{height:54px;width:auto;display:block}
+.badge .fb{display:none}
+.badge.fallback img{display:none}
+.badge.fallback .fb{display:inline-block;line-height:1;background:var(--ink);color:var(--paper);padding:16px 22px;font-weight:800;font-size:16px}
+.soon{display:inline-block;border:1.5px solid var(--ink);padding:10px 16px;font-weight:700;font-size:14px}
+h1{font-weight:900;font-size:clamp(38px,8vw,56px);line-height:1;letter-spacing:-.04em;margin:40px 0 10px}
+h2{font-weight:800;font-size:26px;letter-spacing:-.02em;margin:56px 0 14px}
+h3{font-weight:800;font-size:18px;margin:32px 0 6px}
+p{margin:0 0 14px;max-width:62ch}
+.muted{color:var(--grey);font-size:15px}
+details{border-top:1px solid var(--line)}
+details:last-of-type{border-bottom:1px solid var(--line)}
+summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;gap:16px;padding:18px 0;font-weight:700;font-size:18px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";font-weight:400;font-size:24px;line-height:1;transition:transform .2s}
+details[open] summary::after{transform:rotate(45deg)}
+details p{color:var(--ink);padding-bottom:6px}
+.contact{margin-top:40px;background:var(--ink);color:var(--paper);padding:26px 24px}
+.contact p{margin:0}
+.contact a{font-weight:800;font-size:20px}
+ul{padding-left:20px;margin:0 0 14px;max-width:62ch}
+li{margin-bottom:6px}
+footer{margin:72px 0 40px;padding-top:18px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between;color:var(--grey);font-size:14px}
+@media (prefers-reduced-motion:reduce){summary::after{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <a class="brand" href="index.html"><svg class="mark" viewBox="0 0 140 140" aria-hidden="true"><rect width="140" height="140" class="mark-bg"/><polygon points="32,32 52,32 52,62 82,32 108,32 70,70 108,108 82,108 52,78 52,108 32,108" class="mark-fg"/></svg>Kolekta</a>
+  <div class="lang" role="group" aria-label="Dil / Language">
+    <button type="button" data-l="tr" aria-pressed="true">Türkçe</button>
+    <button type="button" data-l="en" aria-pressed="false">English</button>
+  </div>
+</header>
+
+<section class="hero">
+  <p class="word">Kolekta</p>
+  <div class="tr">
+    <p class="tagline">Koleksiyonların için sade bir arşiv.</p>
+    <p class="lead">Saatler, plaklar, pullar, kalemler ya da tamamen sana özel bir koleksiyon. Fotoğraflarıyla kaydet, istediğin gibi düzenle, değerini takip et. Hesap yok, reklam yok; her şey senin telefonunda.</p>
+    <div class="stores">
+      <a class="badge" href="https://apps.apple.com/tr/app/kolekta-collection-tracker/id6816333352" aria-label="Kolekta'yı App Store'dan indirin"><img src="appstore-badge-tr.svg" alt="App Store'dan İndirin" onerror="this.parentNode.classList.add('fallback')"><span class="fb">App Store'dan indir</span></a>
+      <span class="soon">Google Play'de yakında</span>
+    </div>
+  </div>
+  <div class="en">
+    <p class="tagline">A simple archive for everything you collect.</p>
+    <p class="lead">Watches, vinyl, stamps, pens or a collection entirely your own. Record it with photos, arrange it your way and track its value. No account, no ads; everything stays on your phone.</p>
+    <div class="stores">
+      <a class="badge" href="https://apps.apple.com/tr/app/kolekta-collection-tracker/id6816333352" aria-label="Download Kolekta on the App Store"><img src="appstore-badge-en.svg" alt="Download on the App Store" onerror="this.parentNode.classList.add('fallback')"><span class="fb">Download on the App Store</span></a>
+      <span class="soon">Coming soon to Google Play</span>
+    </div>
+  </div>
+</section>
+
+<section id="destek">
+  <div class="tr"><h2>Destek</h2><details><summary>Verilerim nerede saklanıyor?</summary><p>Tüm koleksiyonların, fotoğrafların ve notların sadece senin telefonunda saklanır. Kolekta'nın bir hesabı ya da sunucusu yok; verilerin bize ulaşmaz.</p></details><details><summary>Koleksiyonumu yeni telefona nasıl taşırım?</summary><p>Eski telefonda Ayarlar → Yedek al'a dokun ve dosyayı Dosyalar uygulamasıyla iCloud Drive'a kaydet. Yeni telefonda Kolekta'yı yükleyip Ayarlar → Yedekten geri yükle ile aynı dosyayı seç. Tüm koleksiyonlar fotoğraflarıyla birlikte geri gelir. iPhone'un kendi iCloud yedeklemesi açıksa uygulama verileri onunla da taşınır.</p></details><details><summary>Sildiğim bir parçayı geri alabilir miyim?</summary><p>Evet. Silinen parçalar 30 gün boyunca geri dönüşüm kutusunda bekler. Ana ekranın altındaki çöp kutusu simgesinden açıp geri yükleyebilirsin. 30 gün sonra kalıcı olarak silinirler.</p></details><details><summary>Koleksiyonumu başkalarıyla nasıl paylaşırım?</summary><p>Ayarlar → Dışa aktar bölümünden tüm koleksiyonlarını ya da tek bir koleksiyonu fotoğraflı bir PDF katalog veya Excel'de açılabilen bir CSV listesi olarak paylaşabilirsin.</p></details><details><summary>Toplam değer nasıl hesaplanıyor?</summary><p>Her tutar girildiği para biriminde saklanır. Farklı para birimleri varsa toplam, Avrupa Merkez Bankası'nın günlük kurlarıyla Ayarlar'da seçtiğin para birimine çevrilir ve yaklaşık olarak gösterilir. Tahmini değerler bilgi amaçlıdır.</p></details><details><summary>Kendi alanlarımı ekleyebilir miyim?</summary><p>Evet. Koleksiyon oluştururken hazır şablonun alanlarına yenilerini ekleyebilir ya da "Yeni şablon +" ile tamamen kendi şablonunu oluşturabilirsin.</p></details>
+    <div class="contact"><p>Sorunun cevabı burada yoksa bize yaz:</p><a href="mailto:kolekta2026@gmail.com">kolekta2026@gmail.com</a></div>
+  </div>
+  <div class="en"><h2>Support</h2><details><summary>Where is my data stored?</summary><p>All your collections, photos and notes are stored only on your phone. Kolekta has no accounts and no servers; your data never reaches us.</p></details><details><summary>How do I move my collection to a new phone?</summary><p>On your old phone, tap Settings → Create backup and save the file to iCloud Drive with the Files app. On your new phone, install Kolekta and choose the same file under Settings → Restore from backup. All collections come back with their photos. If your iPhone's own iCloud Backup is on, app data moves with it too.</p></details><details><summary>Can I recover an item I deleted?</summary><p>Yes. Deleted items stay in Recently deleted for 30 days. Open it with the trash icon at the bottom of the home screen and restore the item. After 30 days items are removed permanently.</p></details><details><summary>How do I share my collection?</summary><p>Under Settings → Export you can share all collections or a single one as a PDF catalog with photos or as a CSV list that opens in Excel.</p></details><details><summary>How is the total value calculated?</summary><p>Each amount is stored in the currency it was entered in. When currencies differ, the total is converted into the currency chosen in Settings at the European Central Bank's daily rates and shown as an approximation. Estimated values are for reference only.</p></details><details><summary>Can I add my own fields?</summary><p>Yes. When creating a collection you can add fields to any template, or build your own with "New template +".</p></details>
+    <div class="contact"><p>Can't find your answer here? Write to us:</p><a href="mailto:kolekta2026@gmail.com">kolekta2026@gmail.com</a></div>
+  </div>
+</section>
+
+<footer>
+  <span>© 2026 Selim Çağlar</span>
+  <span><a href="index.html#destek"><span class="tr">Destek</span><span class="en">Support</span></a>&nbsp;&nbsp;&nbsp;<a href="privacy.html"><span class="tr">Gizlilik politikası</span><span class="en">Privacy policy</span></a></span>
+</footer>
+</div>
+<script>
+(function(){
+  var saved=null;try{saved=localStorage.getItem('kolekta-lang')}catch(e){}
+  var q=new URLSearchParams(location.search).get('lang');
+  var lang=q||saved||((navigator.language||'').toLowerCase().indexOf('tr')===0?'tr':'en');
+  function set(l){document.documentElement.setAttribute('data-lang',l);document.documentElement.lang=l;
+    document.querySelectorAll('.lang button').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.l===l)});
+    try{localStorage.setItem('kolekta-lang',l)}catch(e){}}
+  set(lang==='en'?'en':'tr');
+  document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){set(b.dataset.l)})});
+})();
+</script>
+</body>
+</html>

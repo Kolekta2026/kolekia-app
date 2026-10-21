@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Kolekia",
+    "NSCameraUsageDescription": "Kolekia, parçalarının fotoğrafını çekebilmek için kameraya erişmek istiyor.",
+    "NSPhotoLibraryUsageDescription": "Kolekia, parçalarına fotoğraf ekleyebilmek için fotoğraflarına erişmek istiyor.",
+    "NSFaceIDUsageDescription": "Kolekia, uygulamanın kilidini açmak için Face ID kullanır."
+  }
+}
