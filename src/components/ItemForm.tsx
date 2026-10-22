@@ -19,7 +19,7 @@ import {
   coerce, findKey, isMetaKey, KEY_CURRENCY, KEY_STORY, KEY_TITLE, KEY_VALUE, meaningfulTitle, norm,
 } from '../lib/aiFill';
 import { addFieldToTemplate } from '../lib/templateExtras';
-import { aiAvailable, aiRemaining, countAiUse, hasAiConsent, identifyItem, setAiConsent } from '../lib/gemini';
+import { aiAvailable, aiDailyLimit, aiRemaining, countAiUse, hasAiConsent, identifyItem, refreshAiLimit, setAiConsent } from '../lib/gemini';
 import { ActivityIndicator } from 'react-native';
 
 type FieldDef = { id: number; name: string; type: FieldType; options: string | null };
@@ -69,7 +69,12 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
   // Bekleme aşaması: 0 gönderiliyor, 1 tanınıyor, 2 Google yoğun
   const [aiStage, setAiStage] = useState(0);
   const [aiLeft, setAiLeft] = useState<number | null>(null);
-  useEffect(() => { if (aiAvailable) aiRemaining(db).then(setAiLeft).catch(() => {}); }, [db]);
+  useEffect(() => {
+    if (!aiAvailable) return;
+    // Önce bilinen değer gösterilir, sonra sunucudaki güncel hak sayısıyla yenilenir
+    aiRemaining(db).then(setAiLeft).catch(() => {});
+    refreshAiLimit(db).then(() => aiRemaining(db)).then(setAiLeft).catch(() => {});
+  }, [db]);
 
   useEffect(() => {
     (async () => {
@@ -282,7 +287,7 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
     const left = await aiRemaining(db);
     setAiLeft(left);
     if (left <= 0) {
-      Alert.alert(t('ai.title'), t('ai.limit'));
+      Alert.alert(t('ai.title'), t('ai.limit', { n: await aiDailyLimit(db) }));
       return;
     }
     if (!askedConsent && !(await hasAiConsent(db))) {

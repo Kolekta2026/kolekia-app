@@ -101,8 +101,30 @@ export async function setAiConsent(db: SQLiteDatabase) {
   await db.runAsync("INSERT OR REPLACE INTO settings (key, value) VALUES ('ai_consent', '1')");
 }
 
-// Ücretsiz günlük hak: cihaz başına günde AI_DAILY_LIMIT başarılı doldurma (yerel saatle gün)
-export const AI_DAILY_LIMIT = 10;
+// Ücretsiz günlük hak: cihaz başına günde N başarılı doldurma (yerel saatle gün).
+// N, ara sunucudaki DAILY_LIMIT ayarından gelir; uygulama güncellemeden değiştirilebilir.
+// Sunucuya ulaşılamazsa son bilinen değer, o da yoksa 10 kullanılır.
+export const AI_DEFAULT_LIMIT = 10;
+
+export async function aiDailyLimit(db: SQLiteDatabase) {
+  const r = await db.getFirstAsync<{ value: string }>("SELECT value FROM settings WHERE key = 'ai_limit'");
+  const n = Number(r?.value);
+  return Number.isFinite(n) && n >= 0 && r ? n : AI_DEFAULT_LIMIT;
+}
+
+export async function refreshAiLimit(db: SQLiteDatabase) {
+  if (!PROXY) return;
+  try {
+    const base = PROXY.endsWith('/') ? PROXY : PROXY + '/';
+    const r = await fetch(base + 'config');
+    if (!r.ok) return;
+    const j = await r.json();
+    const n = Number(j?.dailyLimit);
+    if (Number.isFinite(n) && n >= 0) {
+      await db.runAsync("INSERT OR REPLACE INTO settings (key, value) VALUES ('ai_limit', ?)", String(n));
+    }
+  } catch {}
+}
 const today = () => {
   const d = new Date();
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
@@ -112,17 +134,18 @@ export async function aiRemaining(db: SQLiteDatabase) {
   const r = await db.getFirstAsync<{ value: string }>("SELECT value FROM settings WHERE key = 'ai_usage'");
   try {
     const u = r ? JSON.parse(r.value) : null;
-    if (u?.date === today()) return Math.max(0, AI_DAILY_LIMIT - Number(u.n || 0));
+    if (u?.date === today()) return Math.max(0, (await aiDailyLimit(db)) - Number(u.n || 0));
   } catch {}
-  return AI_DAILY_LIMIT;
+  return aiDailyLimit(db);
 }
 
 export async function countAiUse(db: SQLiteDatabase) {
+  const limit = await aiDailyLimit(db);
   const left = await aiRemaining(db);
-  const n = AI_DAILY_LIMIT - left + 1;
+  const n = limit - left + 1;
   await db.runAsync(
     "INSERT OR REPLACE INTO settings (key, value) VALUES ('ai_usage', ?)",
     JSON.stringify({ date: today(), n })
   );
-  return Math.max(0, AI_DAILY_LIMIT - n);
+  return Math.max(0, limit - n);
 }
