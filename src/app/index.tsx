@@ -23,6 +23,8 @@ import { Toast, ToastHandle } from '../components/Toast';
 import { deleteSharedList, pickAndImport, ShareImportError } from '../lib/shareData';
 import { parseSortMode, sortItems, type SortMode } from '../lib/sort';
 import { useMenu } from '../lib/menu';
+import { EmptyShowcase } from '../components/EmptyShowcase';
+import { getDemoCollectionId, loadDemo, removeDemo } from '../lib/demo';
 
 type CollectionRow = { id: number; name: string; cover: string | null; all_count: number };
 type ItemRow = {
@@ -70,6 +72,11 @@ export default function HomeScreen() {
   const [collections, setCollections] = useState<CollectionRow[]>([]);
   const [items, setItems] = useState<ItemRow[]>([]);
   const [trashCount, setTrashCount] = useState(0);
+  // Örnek koleksiyon (yeni kullanıcı "Örnek koleksiyonla dene" dediyse)
+  const [demoId, setDemoId] = useState<number | null>(null);
+  const [demoLoading, setDemoLoading] = useState(false);
+  // Veriler ilk kez okunana kadar boş ekran gösterilmez (koleksiyonu olan kullanıcıda bir an görünmesin)
+  const [loaded, setLoaded] = useState(false);
   const [sharedLists, setSharedLists] = useState<SharedTile[]>([]);
   const [selected, setSelected] = useState<number | null>(null); // null = Tümü
   const [status, setStatus] = useState<StatusFilter>('all');
@@ -127,8 +134,10 @@ export default function HomeScreen() {
         return { id: r.id, title: r.sender || r.title, cover };
       })
     );
+    setDemoId(await getDemoCollectionId(db));
     setCollections(cols);
     setItems(its);
+    setLoaded(true);
     setTrashCount(trash?.n ?? 0);
     setSelected(prev => (prev !== null && !cols.some(c => c.id === prev) ? null : prev));
   }, [db]);
@@ -181,6 +190,33 @@ export default function HomeScreen() {
     // Seçili koleksiyona tekrar dokununca koleksiyon sayfası açılır
     if (id !== null && id === selected) router.push(`/collection/${id}`);
     else setSelected(id);
+  }
+
+  async function tryDemo() {
+    setDemoLoading(true);
+    try {
+      await loadDemo(db, lang);
+      await load();
+    } catch (e) {
+      Alert.alert(t('err.saveFailed'), String(e));
+    } finally {
+      setDemoLoading(false);
+    }
+  }
+
+  function confirmRemoveDemo() {
+    Alert.alert(t('demo.removeTitle'), t('demo.removeMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('common.delete'),
+        style: 'destructive',
+        onPress: async () => {
+          await removeDemo(db);
+          setSelected(null);
+          load();
+        },
+      },
+    ]);
   }
 
   function confirmDelete(c: CollectionRow) {
@@ -606,12 +642,24 @@ export default function HomeScreen() {
     <View style={[s.container, { paddingTop: insets.top }]}>
       <Animated.ScrollView ref={scrollRef} scrollEnabled={!dragSelecting} contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}>
         {header}
-        {visible.length === 0 ? (
-          collections.length === 0 ? (
-            <View style={s.empty}>
-              <Text style={s.emptyTitle}>{t('home.emptyTitle')}</Text>
-              <Text style={s.emptyText}>{t('home.emptyText')}</Text>
+        {demoId !== null && collections.length > 0 && (
+          <View style={s.demoBar}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.demoTitle}>{t('demo.bannerTitle')}</Text>
+              <Text style={s.demoText}>{t('demo.bannerText')}</Text>
             </View>
+            <Pressable onPress={confirmRemoveDemo} style={({ pressed }) => [s.demoBtn, pressed && { opacity: 0.8 }]}>
+              <Text style={s.demoBtnText}>{t('common.delete')}</Text>
+            </Pressable>
+          </View>
+        )}
+        {visible.length === 0 ? (
+          !loaded ? null : collections.length === 0 ? (
+            <EmptyShowcase
+              onCreate={() => router.push('/new-collection')}
+              onDemo={tryDemo}
+              demoLoading={demoLoading}
+            />
           ) : (
             <View style={s.empty}>
               <Text style={s.emptyText}>{t('home.emptyFilter')}</Text>
@@ -677,6 +725,9 @@ export default function HomeScreen() {
                       <Text style={s.cellTitle} numberOfLines={3}>{item.title}</Text>
                     )}
                   </View>
+                  {item.collection_id === demoId && (
+                    <View style={s.demoTag}><Text style={s.demoTagText}>{t('demo.tag')}</Text></View>
+                  )}
                   {item.status !== 'owned' && (
                     <View style={s.badge}>
                       <Ionicons
@@ -726,12 +777,12 @@ export default function HomeScreen() {
       ) : (
         <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(100)} style={[s.bottomBar, { bottom: insets.bottom + 12 }]}>
         {/* İlk koleksiyon yoksa doğrudan oluşturulur; varsa ikonlu seçenekler açılır */}
-        <PrimaryButton
-          icon="add"
-          label={collections.length === 0 ? t('home.create') : t('add.button')}
-          onPress={() => (collections.length === 0 ? router.push('/new-collection') : setAddOpen(true))}
-          style={{ flex: 1 }}
-        />
+        {/* Boş ekranda çağrı kartı zaten ortada; alttaki düğme tekrar etmesin */}
+        {collections.length > 0 || !loaded ? (
+          <PrimaryButton icon="add" label={t('add.button')} onPress={() => setAddOpen(true)} style={{ flex: 1 }} />
+        ) : (
+          <View style={{ flex: 1 }} />
+        )}
         <Pressable
           onPress={() => router.push('/trash')}
           accessibilityLabel={t('nav.trash')}
@@ -862,6 +913,16 @@ const makeStyles = (C: Palette) => StyleSheet.create({
   },
   selAllText: { fontFamily: F.bold, fontSize: 15, color: C.black },
   cellTitle: { fontFamily: F.bold, fontSize: 13, color: C.black, textAlign: 'center' },
+  demoBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginHorizontal: 16, marginTop: 4, marginBottom: 10, padding: 12, borderWidth: 1.5, borderColor: C.black,
+  },
+  demoTitle: { fontFamily: F.bold, fontSize: 13, color: C.black },
+  demoText: { fontFamily: F.regular, fontSize: 12, color: C.grey, marginTop: 2 },
+  demoBtn: { backgroundColor: C.brand, paddingHorizontal: 14, paddingVertical: 8 },
+  demoBtnText: { fontFamily: F.bold, fontSize: 13, color: C.onBrand },
+  demoTag: { position: 'absolute', left: 4, top: 4, backgroundColor: C.black, paddingHorizontal: 5, paddingVertical: 2 },
+  demoTagText: { fontFamily: F.bold, fontSize: 9, letterSpacing: 0.5, color: C.white },
   badge: {
     position: 'absolute',
     top: 6,

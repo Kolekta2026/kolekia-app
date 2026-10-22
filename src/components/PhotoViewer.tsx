@@ -4,7 +4,7 @@ import {
   useWindowDimensions, View,
 } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { F } from '../constants/theme';
 import { Palette, useStyles, useTheme } from '../lib/theme';
@@ -13,9 +13,12 @@ import { useI18n } from '../lib/i18n';
 const MAX_ZOOM = 5;
 const DOUBLE_TAP_ZOOM = 2.5;
 const DOUBLE_TAP_MS = 260;
+const DISMISS_DISTANCE = 120;
+const DISMISS_VELOCITY = 900;
 
 // Tam ekran fotoğraf görüntüleyici: iki parmakla yakınlaştırma,
-// çift dokunuşla yakınlaştır/uzaklaştır, yatay kaydırarak fotoğraflar arası geçiş.
+// çift dokunuşla yakınlaştır/uzaklaştır, yatay kaydırarak fotoğraflar arası geçiş,
+// aşağı kaydırarak kapatma (yakınlaştırılmışken kapanmaz).
 export function PhotoViewer({ photos, index, visible, onClose }: {
   photos: string[];
   index: number;
@@ -30,6 +33,43 @@ export function PhotoViewer({ photos, index, visible, onClose }: {
   const [page, setPage] = useState(index);
   const [zoomed, setZoomed] = useState(false);
 
+  // Aşağı kaydırarak kapatma: fotoğraf parmağı izler, zemin giderek şeffaflaşır
+  const dragY = useSharedValue(0);
+  // iPhone'da fotoğraflar yerel ScrollView içinde (yakınlaştırma için); dikey hareketi o yakalar.
+  // Orada kapatma ScrollView'un aşağı esnemesiyle yapılır (pull), Android'de bu el hareketiyle.
+  const pull = useSharedValue(0);
+  const dismiss = Gesture.Pan()
+    .enabled(!zoomed && Platform.OS === 'android')
+    .activeOffsetY(18)
+    .failOffsetY(-18)
+    .failOffsetX([-18, 18])
+    .onUpdate(e => {
+      dragY.value = Math.max(0, e.translationY);
+    })
+    .onEnd(e => {
+      if (dragY.value > DISMISS_DISTANCE || e.velocityY > DISMISS_VELOCITY) {
+        dragY.value = withTiming(height, { duration: 180 }, done => {
+          if (done) runOnJS(onClose)();
+        });
+      } else {
+        dragY.value = withSpring(0, { damping: 18, stiffness: 220 });
+      }
+    });
+  const contentStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: dragY.value },
+      { scale: 1 - Math.min(dragY.value / height, 1) * 0.15 },
+    ],
+  }));
+  const fadeStyle = useAnimatedStyle(() => ({
+    opacity: 1 - Math.min((dragY.value + pull.value) / (height * 0.6), 1),
+  }));
+  const onPull = (dy: number) => { pull.value = Math.max(0, dy); };
+  const onPullEnd = (dy: number, vy: number) => {
+    if (dy > DISMISS_DISTANCE * 0.8 || (dy > 20 && vy > 1.2)) onClose();
+    else pull.value = withTiming(0, { duration: 150 });
+  };
+
   return (
     <Modal
       visible={visible}
@@ -37,11 +77,19 @@ export function PhotoViewer({ photos, index, visible, onClose }: {
       presentationStyle="overFullScreen"
       transparent
       onRequestClose={onClose}
-      onShow={() => setPage(index)}
+      onShow={() => {
+        setPage(index);
+        setZoomed(false);
+        dragY.value = 0;
+        pull.value = 0;
+      }}
     >
       <StatusBar hidden />
       {/* Android'de hareketlerin Modal içinde çalışması için kök görünüm gerekiyor */}
-      <GestureHandlerRootView style={s.backdrop}>
+      <GestureHandlerRootView style={s.root}>
+        <Animated.View style={[StyleSheet.absoluteFill, s.backdrop, fadeStyle]} pointerEvents="none" />
+        <GestureDetector gesture={dismiss}>
+        <Animated.View style={[{ flex: 1 }, contentStyle]}>
         <FlatList
           data={photos}
           keyExtractor={(u, i) => `${i}-${u}`}
@@ -56,19 +104,24 @@ export function PhotoViewer({ photos, index, visible, onClose }: {
             Platform.OS === 'android' ? (
               <ZoomableAndroid uri={item} width={width} height={height} onZoomChange={setZoomed} />
             ) : (
-              <ZoomablePhoto uri={item} width={width} height={height} />
+              <ZoomablePhoto
+                uri={item} width={width} height={height}
+                onZoomChange={setZoomed} onPull={onPull} onPullEnd={onPullEnd}
+              />
             )
           }
         />
+        </Animated.View>
+        </GestureDetector>
 
-        <View style={[s.topBar, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
+        <Animated.View style={[s.topBar, { paddingTop: insets.top + 8 }, fadeStyle]} pointerEvents="box-none">
           <Text style={s.counter}>
             {photos.length > 1 ? `${page + 1} / ${photos.length}` : ''}
           </Text>
           <Pressable onPress={onClose} hitSlop={14} style={s.closeButton}>
             <Text style={s.closeText}>{t('common.close')}</Text>
           </Pressable>
-        </View>
+        </Animated.View>
       </GestureHandlerRootView>
     </Modal>
   );
@@ -164,7 +217,10 @@ function ZoomableAndroid({ uri, width, height, onZoomChange }: {
   );
 }
 
-function ZoomablePhoto({ uri, width, height }: { uri: string; width: number; height: number }) {
+function ZoomablePhoto({ uri, width, height, onZoomChange, onPull, onPullEnd }: {
+  uri: string; width: number; height: number; onZoomChange: (z: boolean) => void;
+  onPull: (dy: number) => void; onPullEnd: (dy: number, vy: number) => void;
+}) {
   const { C } = useTheme();
   const s = useStyles(makeStyles);
   const scrollRef = useRef<ScrollView>(null);
@@ -206,8 +262,22 @@ function ZoomablePhoto({ uri, width, height }: { uri: string; width: number; hei
       centerContent
       showsHorizontalScrollIndicator={false}
       showsVerticalScrollIndicator={false}
-      scrollEventThrottle={32}
-      onScroll={e => { zoom.current = e.nativeEvent.zoomScale ?? 1; }}
+      alwaysBounceVertical
+      scrollEventThrottle={16}
+      onScrollEndDrag={e => {
+        // Yakınlaştırılmamışken aşağı çekilip bırakılırsa kapanır
+        if (zoom.current > 1.05) return;
+        const dy = -e.nativeEvent.contentOffset.y;
+        const vy = -(e.nativeEvent.velocity?.y ?? 0);
+        onPullEnd(dy, vy);
+      }}
+      onScroll={e => {
+        if (zoom.current <= 1.05) onPull(-e.nativeEvent.contentOffset.y);
+        const z = e.nativeEvent.zoomScale ?? 1;
+        // Yakınlaştırma durumu değişince üst bileşene bildirilir (yakınken aşağı kaydırma kapatmaz)
+        if ((z > 1.05) !== (zoom.current > 1.05)) onZoomChange(z > 1.05);
+        zoom.current = z;
+      }}
     >
       <Pressable onPress={handlePress}>
         <Image source={{ uri }} style={{ width, height }} resizeMode="contain" />
@@ -217,7 +287,8 @@ function ZoomablePhoto({ uri, width, height }: { uri: string; width: number; hei
 }
 
 const makeStyles = (C: Palette) => StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: '#000000' }, // görüntüleyici her zaman karanlık
+  root: { flex: 1, backgroundColor: 'transparent' },
+  backdrop: { backgroundColor: '#000000' }, // görüntüleyici her zaman karanlık
   topBar: {
     position: 'absolute',
     top: 0,

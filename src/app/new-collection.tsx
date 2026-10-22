@@ -35,6 +35,8 @@ export default function NewCollectionScreen() {
   const [fields, setFields] = useState<FieldTemplate[]>(builtin[0].fields);
   const [tplName, setTplName] = useState('');
   const [adding, setAdding] = useState(false);
+  // Alanlar hazır gelir; merak eden "Alanları özelleştir" ile açar
+  const [showFields, setShowFields] = useState(false);
   const [fName, setFName] = useState('');
   const [fType, setFType] = useState<FieldType>('text');
   const [fOptions, setFOptions] = useState('');
@@ -217,6 +219,19 @@ export default function NewCollectionScreen() {
         </View>
       )}
 
+      {!isNew && (
+        <Pressable
+          onPress={() => setShowFields(v => !v)}
+          style={({ pressed }) => [s.fieldsToggle, pressed && { opacity: 0.7 }]}
+          accessibilityState={{ expanded: showFields }}
+        >
+          <Text style={s.fieldsToggleText}>{t('newCol.customize', { n: fields.length })}</Text>
+          <Ionicons name={showFields ? 'chevron-up' : 'chevron-down'} size={16} color={C.grey} />
+        </Pressable>
+      )}
+      {!isNew && !showFields && <Text style={s.hint}>{t('newCol.fieldsReady')}</Text>}
+
+      {(isNew || showFields) && (<>
       <FieldLabel>{t('newCol.tplFields', { n: fields.length })}</FieldLabel>
       <View style={s.boxes}>
         {fields.map((f, i) => (
@@ -285,6 +300,7 @@ export default function NewCollectionScreen() {
           <SecondaryButton label={t('newCol.addField')} onPress={addCustomField} style={{ marginTop: 16 }} />
         </View>
       )}
+      </>)}
 
       <PrimaryButton
         label={saving ? t('common.saving') : t('newCol.create')}
@@ -338,6 +354,11 @@ const makeStyles = (C: Palette) => StyleSheet.create({
   },
   addBoxText: { fontFamily: F.semi, fontSize: 14, color: C.black },
   addPanel: { marginTop: 8 },
+  fieldsToggle: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 24, paddingVertical: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.line,
+  },
+  fieldsToggleText: { fontFamily: F.semi, fontSize: 14, color: C.grey },
   suggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   suggestion: {
     borderWidth: 1,
