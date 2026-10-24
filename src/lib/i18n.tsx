@@ -1,5 +1,6 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
+import { localizeFields } from './fieldI18n';
 
 export type Lang = 'tr' | 'en';
 type Params = Record<string, string | number>;
@@ -19,6 +20,61 @@ const tr = {
   'status.owned': 'Koleksiyonda',
   'status.wishlist': 'İstek listesi',
   'status.trade': 'Takaslık',
+  'status.loaned': 'Ödünçte',
+  'status.sold': 'Satıldı',
+
+  'date.invalidTitle': 'Tarih anlaşılamadı',
+  'date.invalid': (p: Params) => `Tarihi ${p.ph} biçiminde yaz ya da boş bırak.`,
+
+  'sold.price': 'Satış fiyatı',
+  'sold.date': 'Satış tarihi',
+  'sold.profit': 'Kâr',
+  'sold.loss': 'Zarar',
+
+  'loan.to': 'Kime verildi',
+  'loan.toPh': 'Ör. Ahmet',
+  'loan.since': 'Verildiği tarih',
+  'loan.due': 'Dönüş tarihi',
+  'loan.in.1w': '1 hafta',
+  'loan.in.2w': '2 hafta',
+  'loan.in.1m': '1 ay',
+  'loan.in.3m': '3 ay',
+  'loan.in.none': 'Tarih yok',
+  'loan.hint': 'Dönüş günü sabah hatırlatma bildirimi gelir. Ayarlar\'dan kapatabilirsin.',
+  'loan.withName': (p: Params) => `Kimde: ${p.name}`,
+  'loan.sinceDate': (p: Params) => `Verildi: ${p.date}`,
+  'loan.dueDate': (p: Params) => `Dönüş: ${p.date}`,
+  'loan.overdue': (p: Params) => `${p.n} gün gecikti`,
+  'loan.today': 'bugün',
+  'loan.left': (p: Params) => `${p.n} gün kaldı`,
+
+  'history.title': 'Değer geçmişi',
+  'history.a11y': (p: Params) => `${p.n} değerlemede ${p.from} değerinden ${p.to} değerine`,
+  'history.sub': (p: Params) => `${p.n} değerleme · ilk kayıt ${p.first}`,
+
+  'story.title': 'Hikâyede paylaş',
+  'story.kicker': 'Koleksiyonumdan',
+  'story.share': 'Paylaş',
+  'story.hint': 'Paylaşım menüsünden Instagram\'ı, ardından Hikâye\'yi seç. Fiyat bilgileri görsele konmaz.',
+  'story.failed': 'Görsel hazırlanamadı',
+  'story.style': 'Renk',
+
+  'notif.section': 'Bildirimler',
+  'notif.loans': 'Ödünç hatırlatmaları',
+  'notif.loansHint': 'Ödünç verdiğin parçanın dönüş günü sabah 10:00\'da hatırlatır.',
+  'notif.digest': 'Koleksiyonundan bugün',
+  'notif.off': 'Kapalı',
+  'notif.weekly': 'Haftalık',
+  'notif.daily': 'Her gün',
+  'notif.digestHint': 'Akşam 19:30\'da koleksiyonundan rastgele bir parçayı hatırlatır. Bildirimler telefonunda hazırlanır, hiçbir bilgi dışarı gönderilmez.',
+  'notif.deniedTitle': 'Bildirim izni kapalı',
+  'notif.denied': 'Bildirim gönderebilmemiz için telefonun ayarlarından Kolekia bildirimlerine izin vermelisin.',
+  'notif.openSettings': 'Ayarları aç',
+  'notif.loanTitle': 'Ödünç hatırlatması',
+  'notif.loanBody': (p: Params) => `"${p.title}" için dönüş günü bugün.`,
+  'notif.loanBodyTo': (p: Params) => `"${p.title}" için dönüş günü bugün (${p.to}).`,
+  'notif.digestTitle': 'Koleksiyonundan bugün',
+  'notif.digestBody': (p: Params) => `${p.title} · ${p.collection}`,
   'filter.all': 'Tümü',
 
   'fieldType.text': 'Metin',
@@ -392,6 +448,61 @@ const en: Record<Key, Entry> = {
   'status.owned': 'Owned',
   'status.wishlist': 'Wishlist',
   'status.trade': 'For trade',
+  'status.loaned': 'On loan',
+  'status.sold': 'Sold',
+
+  'date.invalidTitle': "Couldn't read the date",
+  'date.invalid': p => `Write the date as ${p.ph}, or leave it empty.`,
+
+  'sold.price': 'Sale price',
+  'sold.date': 'Sale date',
+  'sold.profit': 'Profit',
+  'sold.loss': 'Loss',
+
+  'loan.to': 'Lent to',
+  'loan.toPh': 'e.g. Alex',
+  'loan.since': 'Lent on',
+  'loan.due': 'Return date',
+  'loan.in.1w': '1 week',
+  'loan.in.2w': '2 weeks',
+  'loan.in.1m': '1 month',
+  'loan.in.3m': '3 months',
+  'loan.in.none': 'No date',
+  'loan.hint': "You'll get a reminder on the morning of the return date. You can turn it off in Settings.",
+  'loan.withName': p => `With ${p.name}`,
+  'loan.sinceDate': p => `Lent: ${p.date}`,
+  'loan.dueDate': p => `Due: ${p.date}`,
+  'loan.overdue': p => `${plural(+p.n, 'day', 'days')} overdue`,
+  'loan.today': 'today',
+  'loan.left': p => `${plural(+p.n, 'day', 'days')} left`,
+
+  'history.title': 'Value history',
+  'history.a11y': p => `From ${p.from} to ${p.to} over ${p.n} valuations`,
+  'history.sub': p => `${plural(+p.n, 'valuation', 'valuations')} · first ${p.first}`,
+
+  'story.title': 'Share to story',
+  'story.kicker': 'From my collection',
+  'story.share': 'Share',
+  'story.hint': 'Pick Instagram in the share menu, then Story. Prices are never added to the image.',
+  'story.failed': "Couldn't create the image",
+  'story.style': 'Colour',
+
+  'notif.section': 'Notifications',
+  'notif.loans': 'Loan reminders',
+  'notif.loansHint': 'Reminds you at 10:00 on the day a lent item is due back.',
+  'notif.digest': 'From your collection',
+  'notif.off': 'Off',
+  'notif.weekly': 'Weekly',
+  'notif.daily': 'Daily',
+  'notif.digestHint': 'At 19:30, a random piece from your collection. Notifications are prepared on your phone; nothing is sent anywhere.',
+  'notif.deniedTitle': 'Notifications are off',
+  'notif.denied': 'To get notifications, allow them for Kolekia in your phone settings.',
+  'notif.openSettings': 'Open Settings',
+  'notif.loanTitle': 'Loan reminder',
+  'notif.loanBody': p => `"${p.title}" is due back today.`,
+  'notif.loanBodyTo': p => `"${p.title}" is due back today (${p.to}).`,
+  'notif.digestTitle': 'From your collection',
+  'notif.digestBody': p => `${p.title} · ${p.collection}`,
   'filter.all': 'All',
 
   'fieldType.text': 'Text',
@@ -789,10 +900,16 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     const rows = await db.getAllAsync<{ key: string; value: string }>(
       "SELECT key, value FROM settings WHERE key IN ('language', 'currency')"
     );
+    let effective: Lang = deviceLang();
     for (const r of rows) {
-      if (r.key === 'language' && (r.value === 'tr' || r.value === 'en')) setLangState(r.value);
+      if (r.key === 'language' && (r.value === 'tr' || r.value === 'en')) {
+        setLangState(r.value);
+        effective = r.value;
+      }
       if (r.key === 'currency' && CURRENCIES.includes(r.value as Currency)) setCurrencyState(r.value as Currency);
     }
+    // Alan adları görünen dile getirilir (eski sürümde ya da yedekte tek dilde kalmış olabilir)
+    try { await localizeFields(db, effective, true); } catch {}
   }, [db]);
 
   useEffect(() => {
@@ -805,9 +922,18 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   }, [db]);
 
   const setLang = useCallback((l: Lang) => {
+    const prev = lang;
     setLangState(l);
     db.runAsync("INSERT OR REPLACE INTO settings (key, value) VALUES ('language', ?)", l);
-  }, [db]);
+    if (prev === l) return;
+    // Önce karşılığı bilinmeyen alanlar eski dille işaretlenir, sonra tüm alanlar yeni dile çevrilir
+    (async () => {
+      try {
+        await localizeFields(db, prev, true);
+        await localizeFields(db, l, false);
+      } catch {}
+    })();
+  }, [db, lang]);
 
   const t = useCallback<TFunction>((key, params = {}) => {
     const entry = DICT[lang][key] ?? tr[key];

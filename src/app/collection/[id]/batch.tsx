@@ -512,7 +512,7 @@ export default function BatchAddScreen() {
 
         <FieldLabel>{t('form.status')}</FieldLabel>
         <Segmented
-          options={STATUS_KEYS.map(k => ({ key: k, label: t(`status.${k}` as 'status.owned') }))}
+          options={STATUS_KEYS.slice(0, 3).map(k => ({ key: k, label: t(`status.${k}` as 'status.owned') }))}
           value={status}
           onChange={setStatus}
         />

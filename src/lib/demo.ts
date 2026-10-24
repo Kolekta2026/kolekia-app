@@ -161,8 +161,8 @@ export async function loadDemo(db: SQLiteDatabase, lang: Lang): Promise<number> 
     const fieldIds: Record<string, number> = {};
     for (const [i, f] of FIELDS.entries()) {
       const r = await db.runAsync(
-        'INSERT INTO field_defs (collection_id, name, type, options, sort_order) VALUES (?, ?, ?, NULL, ?)',
-        colId, f.name[lang], f.type, i
+        'INSERT INTO field_defs (collection_id, name, name_tr, name_en, type, options, sort_order) VALUES (?, ?, ?, ?, ?, NULL, ?)',
+        colId, f.name[lang], f.name.tr, f.name.en, f.type, i
       );
       fieldIds[f.key] = r.lastInsertRowId;
     }

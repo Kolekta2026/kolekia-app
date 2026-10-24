@@ -30,8 +30,8 @@ export function buildPrompt(fieldNames: string[], lang: Lang) {
   }
   const json = JSON.stringify(obj);
   return tr
-    ? `Bu görseldeki koleksiyon parçasını tanımla. Yanıtı yalnızca tek bir JSON nesnesi olarak ver, başka metin yazma. Şu anahtarları doldur, emin olmadıklarını boş bırak: ${json} Parçayı tanımlayan önemli başka özellikler varsa (en fazla 5) bunları da Türkçe yeni anahtarlar olarak ekle. Tüm değerler kısa metin olsun.`
-    : `Identify the collectible in this image. Reply with a single JSON object only, no other text. Fill these keys and leave any you are unsure of empty: ${json} If other important identifying details exist (at most 5), add them as new keys in English. Keep every value a short string.`;
+    ? `Bu görseldeki koleksiyon parçasını tanımla. Yanıtı yalnızca tek bir JSON nesnesi olarak ver, başka metin yazma. Şu anahtarları doldur, emin olmadıklarını boş bırak: ${json} Parçayı tanımlayan önemli başka özellikler varsa (en fazla 5) bunları da yeni anahtar olarak ekle; yeni anahtarları "Türkçe ad | English name" biçiminde yaz. Tüm değerler kısa metin olsun.`
+    : `Identify the collectible in this image. Reply with a single JSON object only, no other text. Fill these keys and leave any you are unsure of empty: ${json} If other important identifying details exist (at most 5), add them as new keys written as "Turkish name | English name". Keep every value a short string.`;
 }
 
 // Arama çubuğu için en kısa istek; alan eşleştirme ve yeni alan ekleme uygulamada yapılır

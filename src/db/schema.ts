@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const DB_VERSION = 8;
+export const DB_VERSION = 10;
 
 export async function migrateDb(db: SQLiteDatabase) {
   // Yabancı anahtarlar her bağlantıda ayrıca açılmalı
@@ -35,7 +35,7 @@ export async function migrateDb(db: SQLiteDatabase) {
         id             INTEGER PRIMARY KEY AUTOINCREMENT,
         collection_id  INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
         title          TEXT NOT NULL,
-        status         TEXT NOT NULL DEFAULT 'owned',   -- owned | wishlist | trade
+        status         TEXT NOT NULL DEFAULT 'owned',   -- owned | wishlist | trade | loaned | sold
         photo_uri      TEXT,
         story          TEXT,
         created_at     TEXT NOT NULL DEFAULT (datetime('now'))
@@ -160,5 +160,50 @@ export async function migrateDb(db: SQLiteDatabase) {
     version = 8;
   }
 
+  // v9 (1.7): satıldı / ödünç verildi bilgileri ve tahmini değer geçmişi
+  if (version < 9) {
+    await db.execAsync(`
+      ALTER TABLE items ADD COLUMN sold_price REAL;
+      ALTER TABLE items ADD COLUMN sold_currency TEXT;
+      ALTER TABLE items ADD COLUMN sold_at TEXT;          -- YYYY-MM-DD
+      ALTER TABLE items ADD COLUMN loaned_to TEXT;
+      ALTER TABLE items ADD COLUMN loaned_at TEXT;        -- YYYY-MM-DD
+      ALTER TABLE items ADD COLUMN loan_due TEXT;         -- YYYY-MM-DD, boş = dönüş tarihi yok
+
+      CREATE TABLE IF NOT EXISTS value_history (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id      INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+        value        REAL NOT NULL,
+        currency     TEXT NOT NULL,
+        recorded_at  TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_value_history_item ON value_history(item_id, recorded_at);
+    `);
+    await seedValueHistory(db);
+    version = 9;
+  }
+
+  // v10 (1.7): alan adlarının iki dildeki karşılığı (dil değişince ad bunlardan seçilir)
+  if (version < 10) {
+    await db.execAsync(`
+      ALTER TABLE field_defs ADD COLUMN name_tr TEXT;
+      ALTER TABLE field_defs ADD COLUMN name_en TEXT;
+    `);
+    version = 10;
+  }
+
   await db.execAsync(`PRAGMA user_version = ${DB_VERSION}`);
+}
+
+// Geçmişi olmayan parçalar için bugünkü tahmini değer ilk kayıt olur
+// (v9 geçişinde ve değer geçmişi içermeyen eski bir yedekten dönüldüğünde)
+export async function seedValueHistory(db: SQLiteDatabase) {
+  await db.runAsync(`
+    INSERT INTO value_history (item_id, value, currency, recorded_at)
+    SELECT i.id, i.estimated_value,
+           COALESCE(i.estimated_currency, (SELECT value FROM settings WHERE key = 'currency'), 'TRY'),
+           COALESCE(i.valued_at, i.created_at)
+      FROM items i
+     WHERE i.estimated_value IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM value_history h WHERE h.item_id = i.id)`);
 }

@@ -1,6 +1,8 @@
-import { Stack } from 'expo-router';
+import { useEffect } from 'react';
+import { Stack, router } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SQLiteDatabase, SQLiteProvider } from 'expo-sqlite';
+import { SQLiteDatabase, SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import {
   useFonts,
   Archivo_400Regular,
@@ -19,6 +21,7 @@ import { StatusBar } from 'expo-status-bar';
 import { ActionSheetProvider } from '@expo/react-native-action-sheet';
 import Sortable from 'react-native-sortables';
 import { LockProvider } from '../lib/lock';
+import { itemIdFromResponse, syncNotifications } from '../lib/notifications';
 
 async function initDb(db: SQLiteDatabase) {
   await migrateDb(db);
@@ -59,9 +62,24 @@ export default function RootLayout() {
   );
 }
 
+// Planlı bildirimleri günceller (metinler seçili dilde) ve dokunulan bildirimin parçasını açar
+function useNotifications() {
+  const db = useSQLiteContext();
+  const { t, lang } = useI18n();
+  useEffect(() => {
+    syncNotifications(db, t);
+  }, [db, lang]);
+  const last = Notifications.useLastNotificationResponse();
+  useEffect(() => {
+    const id = itemIdFromResponse(last);
+    if (id) router.push(`/item/${id}`);
+  }, [last]);
+}
+
 function AppStack() {
   const { t } = useI18n();
   const { C, isDark } = useTheme();
+  useNotifications();
   return (
     <>
     <StatusBar style={isDark ? 'light' : 'dark'} />

@@ -341,4 +341,8 @@ export function templateLabel(key: string, stored: string | null, lang: Lang, fa
   return stored ?? fallback;
 }
 
+// Alan adlarının ve seçeneklerin iki dildeki karşılıkları (dil değişince mevcut alanlar çevrilir)
+export const FIELD_PAIRS: L[] = RAW.flatMap(t => t.fields.map(f => f.name));
+export const OPTION_PAIRS: L[] = RAW.flatMap(t => t.fields.flatMap(f => f.options ?? []));
+
 export const FIELD_TYPES: FieldType[] = ['text', 'number', 'date', 'select', 'boolean'];

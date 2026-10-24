@@ -16,8 +16,8 @@ function instruction(fieldNames: string[], collection: string, lang: Lang) {
   const tr = lang === 'tr';
   const keys = [tr ? 'Parça adı' : 'Item name', ...fieldNames, tr ? 'Tahmini değer' : 'Estimated value', tr ? 'Para birimi' : 'Currency', tr ? 'Açıklama' : 'Description'];
   return tr
-    ? `Fotoğraftaki koleksiyon parçasını tanımla (koleksiyon: ${collection}). Yanıtı tek bir JSON nesnesi olarak ver. Şu anahtarları kullan: ${keys.join(', ')}. Emin olmadığın anahtarı boş bırak, uydurma. Parçayı tanımlayan önemli başka özellikler varsa (en fazla 5) Türkçe yeni anahtarlar olarak ekle. Tüm değerler kısa metin olsun; Açıklama en fazla 2 cümle.`
-    : `Identify the collectible in the photo (collection: ${collection}). Reply with a single JSON object. Use these keys: ${keys.join(', ')}. Leave a key empty if unsure, do not guess. If other important identifying details exist (at most 5), add them as new keys in English. Keep every value a short string; Description at most 2 sentences.`;
+    ? `Fotoğraftaki koleksiyon parçasını tanımla (koleksiyon: ${collection}). Yanıtı tek bir JSON nesnesi olarak ver. Şu anahtarları kullan: ${keys.join(', ')}. Emin olmadığın anahtarı boş bırak, uydurma. Parçayı tanımlayan önemli başka özellikler varsa (en fazla 5) yeni anahtar olarak ekle; yeni anahtarları hem Türkçe hem İngilizce, "Türkçe ad | English name" biçiminde yaz (ör. "Kasa malzemesi | Case material"). Değerler Türkçe olsun. Tüm değerler kısa metin olsun; Açıklama en fazla 2 cümle.`
+    : `Identify the collectible in the photo (collection: ${collection}). Reply with a single JSON object. Use these keys: ${keys.join(', ')}. Leave a key empty if unsure, do not guess. If other important identifying details exist (at most 5), add them as new keys written in both Turkish and English as "Turkish name | English name" (e.g. "Kasa malzemesi | Case material"). Write the values in English. Keep every value a short string; Description at most 2 sentences.`;
 }
 
 export async function identifyItem(

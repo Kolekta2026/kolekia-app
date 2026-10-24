@@ -7,7 +7,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { F } from '../constants/theme';
+import { countsAsOwned, F, STATUS_ICON } from '../constants/theme';
 import { Palette, useStyles, useTheme } from '../lib/theme';
 import { useI18n, type Currency } from '../lib/i18n';
 import { deleteItemsForever } from '../lib/trash';
@@ -38,7 +38,7 @@ type ItemRow = {
   estimated_value: number | null;
   estimated_currency: string | null;
 };
-type StatusFilter = 'all' | 'owned' | 'wishlist' | 'trade';
+type StatusFilter = 'all' | 'owned' | 'wishlist' | 'trade' | 'loaned' | 'sold';
 type SharedRow = { id: number; title: string; sender: string | null; payload: string };
 type SharedTile = { id: number; title: string; cover: string | null };
 
@@ -145,7 +145,7 @@ export default function HomeScreen() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   // Özet: koleksiyon, sahip olunan parça ve toplam tahmini değer
-  const owned = items.filter(i => i.status === 'owned');
+  const owned = items.filter(i => countsAsOwned(i.status));
   const valueText = useMemo(() => {
     const vals = owned.filter(i => i.estimated_value !== null);
     if (vals.length === 0) return null;
@@ -473,6 +473,13 @@ export default function HomeScreen() {
     { key: 'owned', icon: 'checkmark-circle-outline', iconOn: 'checkmark-circle', label: t('status.owned') },
     { key: 'wishlist', icon: 'heart-outline', iconOn: 'heart', label: t('status.wishlist') },
     { key: 'trade', icon: 'swap-horizontal-outline', iconOn: 'swap-horizontal', label: t('status.trade') },
+    // Ödünç ve Satıldı sekmeleri yalnızca o durumda parça varken görünür
+    ...(items.some(i => i.status === 'loaned') || status === 'loaned'
+      ? [{ key: 'loaned' as const, icon: 'arrow-redo-outline' as const, iconOn: 'arrow-redo' as const, label: t('status.loaned') }]
+      : []),
+    ...(items.some(i => i.status === 'sold') || status === 'sold'
+      ? [{ key: 'sold' as const, icon: 'pricetag-outline' as const, iconOn: 'pricetag' as const, label: t('status.sold') }]
+      : []),
   ];
 
   const header = (
@@ -731,7 +738,7 @@ export default function HomeScreen() {
                   {item.status !== 'owned' && (
                     <View style={s.badge}>
                       <Ionicons
-                        name={item.status === 'wishlist' ? 'heart' : 'swap-horizontal'}
+                        name={STATUS_ICON[item.status] ?? 'ellipse'}
                         size={12}
                         color="#FFFFFF"
                       />

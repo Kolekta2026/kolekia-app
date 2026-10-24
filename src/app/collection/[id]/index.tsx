@@ -8,9 +8,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut, ZoomIn, ZoomOut, useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { Ionicons } from '@expo/vector-icons';
-import { F, STATUS_KEYS } from '../../../constants/theme';
+import { countsAsOwned, F, STATUS_ICON, STATUS_KEYS } from '../../../constants/theme';
 import { Palette, useStyles, useTheme } from '../../../lib/theme';
-import { PrimaryButton, Segmented } from '../../../components/ui';
+import { Chips, PrimaryButton, Segmented } from '../../../components/ui';
 import { Toast, ToastHandle } from '../../../components/Toast';
 import { photoUri } from '../../../lib/photos';
 import { askAndSharePdf } from '../../../lib/shareAction';
@@ -67,9 +67,13 @@ export default function CollectionScreen() {
   const [overTrash, setOverTrash] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // Ödünç ve Satıldı filtreleri yalnızca o durumda parça varken görünür
+  const present = new Set(items.map(i => i.status));
   const filters = [
     { key: 'all', label: t('filter.all') },
-    ...STATUS_KEYS.map(k => ({ key: k, label: t(`status.${k}`) })),
+    ...STATUS_KEYS
+      .filter(k => k === 'owned' || k === 'wishlist' || k === 'trade' || present.has(k) || filter === k)
+      .map(k => ({ key: k, label: t(`status.${k}`) })),
   ];
 
   // Çöp kutusunun ekrandaki merkezi (sürükleme koordinatları pencereye göre)
@@ -129,7 +133,7 @@ export default function CollectionScreen() {
 
   const filtered = filter === 'all' ? items : items.filter(i => i.status === filter);
   const visible = sortItems(filtered, sortMode, { currency, rates });
-  const owned = items.filter(i => i.status === 'owned');
+  const owned = items.filter(i => countsAsOwned(i.status));
   const ownedCount = owned.length;
   const ownedTotal = summarize(
     owned
@@ -223,7 +227,9 @@ export default function CollectionScreen() {
           </Text>
           {ownedTotal?.note && <Text style={s.fxNote}>{ownedTotal.note}</Text>}
           <View style={{ marginTop: 20 }}>
-            <Segmented options={filters} value={filter} onChange={setFilter} />
+            {filters.length > 4
+              ? <Chips options={filters} value={filter} onChange={setFilter} />
+              : <Segmented options={filters} value={filter} onChange={setFilter} />}
           </View>
           <View style={s.controls}>
             <Pressable
@@ -317,7 +323,7 @@ export default function CollectionScreen() {
                       // 4 sütunda sadece fotoğraf; durum köşede küçük işaretle
                       item.status !== 'owned' && (
                         <View style={s.badge}>
-                          <Ionicons name={item.status === 'wishlist' ? 'heart' : 'swap-horizontal'} size={10} color="#FFFFFF" />
+                          <Ionicons name={STATUS_ICON[item.status] ?? 'ellipse'} size={10} color="#FFFFFF" />
                         </View>
                       )
                     ) : (

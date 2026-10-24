@@ -3,26 +3,30 @@ import {
   Alert, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { F, STATUS_KEYS } from '../constants/theme';
 import { Palette, useStyles, useTheme } from '../lib/theme';
 import type { FieldType } from '../constants/templates';
-import { Chips, FieldLabel, PrimaryButton, Segmented } from './ui';
+import { Chips, FieldLabel, PrimaryButton } from './ui';
 import { deletePhoto, persistPhoto, photoUri } from '../lib/photos';
 import { CURRENCIES, Currency, TFunction, useI18n } from '../lib/i18n';
 import { formatDate, moneyToInput, parseMoney } from '../lib/money';
+import { addDays, addMonths, dayInputPlaceholder, dayToInput, inputToDay, today } from '../lib/dates';
+import { ensurePermission, getNotifPrefs, syncNotifications } from '../lib/notifications';
 import { useMenu } from '../lib/menu';
 import { onLensJson, onLensText, takePendingJson } from '../lib/lensBridge';
 import {
   coerce, findKey, isMetaKey, KEY_CURRENCY, KEY_STORY, KEY_TITLE, KEY_VALUE, meaningfulTitle, norm,
 } from '../lib/aiFill';
 import { addFieldToTemplate } from '../lib/templateExtras';
+import { learnPairs, splitPair, type Pair } from '../lib/fieldI18n';
 import { aiAvailable, aiDailyLimit, aiRemaining, countAiUse, hasAiConsent, identifyItem, refreshAiLimit, setAiConsent } from '../lib/gemini';
 import { ActivityIndicator } from 'react-native';
 
-type FieldDef = { id: number; name: string; type: FieldType; options: string | null };
+type FieldDef = { id: number; name: string; type: FieldType; options: string | null; name_tr?: string | null; name_en?: string | null };
 
 // ref: veritabanındaki kayıtlı yol (yeni seçilenlerde null), uri: ekranda gösterilecek adres
 type PhotoEntry = { key: string; ref: string | null; uri: string };
@@ -54,12 +58,27 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
       ),
     []
   );
+  // Satıldı / Ödünç verildi bilgileri (tarihler kutuya yazıldığı hâliyle tutulur)
+  const [soldPrice, setSoldPrice] = useState('');
+  const [soldCur, setSoldCur] = useState<Currency>(currency);
+  const [soldAt, setSoldAt] = useState('');
+  const [loanedTo, setLoanedTo] = useState('');
+  const [loanedAt, setLoanedAt] = useState('');
+  const [loanDue, setLoanDue] = useState('');
   const [purchase, setPurchase] = useState('');
   const [estimated, setEstimated] = useState('');
   const [purchaseCur, setPurchaseCur] = useState<Currency>(currency);
   const [estimatedCur, setEstimatedCur] = useState<Currency>(currency);
   const original = useRef<{ estimated: number | null; estimatedCur: string | null; valuedAt: string | null }>({ estimated: null, estimatedCur: null, valuedAt: null });
   const [saving, setSaving] = useState(false);
+  // Kaydet düğmesi form boyunca altta yüzer; sayfanın sonuna gelince asıl düğme görünür ve yüzen kaybolur
+  const insets = useSafeAreaInsets();
+  const [atEnd, setAtEnd] = useState(true);
+  const scrollBox = useRef({ y: 0, h: 0, content: 0 });
+  const updateAtEnd = () => {
+    const b = scrollBox.current;
+    setAtEnd(b.y + b.h >= b.content - 150);
+  };
   const originalRefs = useRef<string[]>([]);
   // Dolu alanlar üstte gösterilir; sıra yazarken zıplamasın diye yükleme/doldurma anında sabitlenir
   const [filledSnap, setFilledSnap] = useState<Set<number> | null>(null);
@@ -85,9 +104,12 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
           collection_id: number; title: string; status: string; story: string | null;
           purchase_price: number | null; estimated_value: number | null; valued_at: string | null;
           purchase_currency: string | null; estimated_currency: string | null;
+          sold_price: number | null; sold_currency: string | null; sold_at: string | null;
+          loaned_to: string | null; loaned_at: string | null; loan_due: string | null;
         }>(
           `SELECT collection_id, title, status, story, purchase_price, estimated_value, valued_at,
-                  purchase_currency, estimated_currency
+                  purchase_currency, estimated_currency,
+                  sold_price, sold_currency, sold_at, loaned_to, loaned_at, loan_due
              FROM items WHERE id = ?`,
           itemId
         );
@@ -100,6 +122,12 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
         setEstimated(moneyToInput(item.estimated_value, lang));
         if (item.purchase_currency) setPurchaseCur(item.purchase_currency as Currency);
         if (item.estimated_currency) setEstimatedCur(item.estimated_currency as Currency);
+        setSoldPrice(moneyToInput(item.sold_price, lang));
+        if (item.sold_currency) setSoldCur(item.sold_currency as Currency);
+        setSoldAt(dayToInput(item.sold_at, lang));
+        setLoanedTo(item.loaned_to ?? '');
+        setLoanedAt(dayToInput(item.loaned_at, lang));
+        setLoanDue(dayToInput(item.loan_due, lang));
         original.current = {
           estimated: item.estimated_value,
           estimatedCur: item.estimated_currency,
@@ -120,7 +148,7 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
       }
       setCid(resolved);
       const defs = await db.getAllAsync<FieldDef>(
-        'SELECT id, name, type, options FROM field_defs WHERE collection_id = ? ORDER BY sort_order',
+        'SELECT id, name, type, options, name_tr, name_en FROM field_defs WHERE collection_id = ? ORDER BY sort_order',
         resolved!
       );
       setFields(defs);
@@ -128,6 +156,22 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
       setReady(true);
     })();
   }, [db, collectionId, itemId, isEdit]);
+
+  // Satıldı / Ödünç seçilince tarih kutuları bugünle başlar
+  function changeStatus(k: string) {
+    setStatus(k);
+    if (k === 'sold' && !soldAt) setSoldAt(dayToInput(today(), lang));
+    if (k === 'loaned' && !loanedAt) setLoanedAt(dayToInput(today(), lang));
+  }
+
+  // Dönüş tarihi kısayolları: verildiği günden itibaren
+  function setDueIn(kind: 'none' | '1w' | '2w' | '1m' | '3m') {
+    if (kind === 'none') return setLoanDue('');
+    const from = inputToDay(loanedAt, lang) ?? today();
+    const day = kind === '1w' ? addDays(from, 7) : kind === '2w' ? addDays(from, 14)
+      : kind === '1m' ? addMonths(from, 1) : addMonths(from, 3);
+    setLoanDue(dayToInput(day, lang));
+  }
 
   const setValue = (fieldId: number, v: string) => setValues(prev => ({ ...prev, [fieldId]: v }));
 
@@ -147,13 +191,19 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
     if (!cid) return;
     try {
       const next = { ...values };
-      const byName = new Map(fields.map(f => [norm(f.name), f]));
+      // Alan hem görünen adıyla hem diğer dildeki karşılığıyla eşleşir
+      const byName = new Map<string, FieldDef>();
+      for (const f of fields) {
+        for (const n of [f.name, f.name_tr, f.name_en]) if (n && !byName.has(norm(n))) byName.set(norm(n), f);
+      }
       const fresh: [string, string][] = [];
       let filled = 0;
 
       for (const [k, v] of Object.entries(data)) {
         if (isMetaKey(k)) continue;
-        const f = byName.get(norm(k));
+        // Yeni alanlar "Türkçe ad | English name" biçiminde gelir
+        const pair = splitPair(k);
+        const f = byName.get(norm(k)) ?? byName.get(norm(pair.tr)) ?? byName.get(norm(pair.en));
         if (!f) {
           fresh.push([k, v]);
           continue;
@@ -169,20 +219,29 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
       const added: FieldDef[] = [];
       if (fresh.length) {
         const col = await db.getFirstAsync<{ template: string }>('SELECT template FROM collections WHERE id = ?', cid);
+        const pairs: Pair[] = [];
+        const tidy = (x: string, l: 'tr' | 'en') => {
+          const raw = x.trim().replace(/[_]+/g, ' ').slice(0, 40);
+          return raw.charAt(0).toLocaleUpperCase(l) + raw.slice(1);
+        };
         for (const [k, v] of fresh) {
-          const raw = k.trim().replace(/[_]+/g, ' ').slice(0, 40);
-          const name = raw.charAt(0).toLocaleUpperCase(lang) + raw.slice(1);
+          const p = splitPair(k);
+          const nameTr = tidy(p.tr, 'tr');
+          const nameEn = tidy(p.en, 'en');
+          const name = lang === 'tr' ? nameTr : nameEn;
           if (added.some(a => norm(a.name) === norm(name))) continue;
           const res = await db.runAsync(
-            `INSERT INTO field_defs (collection_id, name, type, options, sort_order)
-             VALUES (?, ?, 'text', NULL, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM field_defs WHERE collection_id = ?))`,
-            cid, name, cid
+            `INSERT INTO field_defs (collection_id, name, name_tr, name_en, type, options, sort_order)
+             VALUES (?, ?, ?, ?, 'text', NULL, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM field_defs WHERE collection_id = ?))`,
+            cid, name, nameTr, nameEn, cid
           );
-          const def: FieldDef = { id: res.lastInsertRowId, name, type: 'text', options: null };
+          pairs.push({ tr: nameTr, en: nameEn });
+          const def: FieldDef = { id: res.lastInsertRowId, name, type: 'text', options: null, name_tr: nameTr, name_en: nameEn };
           added.push(def);
           next[def.id] = v;
           if (col) await addFieldToTemplate(db, col.template, { name, type: 'text' });
         }
+        await learnPairs(db, pairs);
       }
 
       // Parça adı: "Parça adı" anahtarı, yoksa alan sırasına göre ilk anlamlı değer
@@ -374,11 +433,31 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
       return;
     }
     if (!cid) return;
+    // Tarihler: boş bırakılabilir ama yazıldıysa anlaşılır olmalı
+    const soldDay = status === 'sold' ? inputToDay(soldAt, lang) : null;
+    const loanedDay = status === 'loaned' ? inputToDay(loanedAt, lang) : null;
+    const dueDay = status === 'loaned' ? inputToDay(loanDue, lang) : null;
+    const badDate =
+      (status === 'sold' && soldAt.trim() && !soldDay) ||
+      (status === 'loaned' && ((loanedAt.trim() && !loanedDay) || (loanDue.trim() && !dueDay)));
+    if (badDate) {
+      Alert.alert(t('date.invalidTitle'), t('date.invalid', { ph: dayInputPlaceholder(lang) }));
+      return;
+    }
     setSaving(true);
     try {
       const refs = photos.map(p => p.ref ?? persistPhoto(p.uri));
       const purchasePrice = parseMoney(purchase, lang);
       const estimatedValue = parseMoney(estimated, lang);
+      const soldValue = status === 'sold' ? parseMoney(soldPrice, lang) : null;
+      // Değer geçmişine yeni kayıt: yeni parçada değer girildiyse ya da değer / birim değiştiyse
+      const valueChanged =
+        estimatedValue !== null &&
+        (!isEdit || estimatedValue !== original.current.estimated || estimatedCur !== original.current.estimatedCur);
+      const extra = [
+        soldValue, soldValue === null ? null : soldCur, soldDay,
+        status === 'loaned' ? loanedTo.trim() || null : null, loanedDay, dueDay,
+      ];
       // Tahmini değer değiştiyse değerleme tarihi bugün olur
       const valuedAt =
         estimatedValue === null
@@ -393,10 +472,12 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
           await db.runAsync(
             `UPDATE items SET title = ?, status = ?, story = ?,
                purchase_price = ?, estimated_value = ?, valued_at = ?,
-               purchase_currency = ?, estimated_currency = ?
+               purchase_currency = ?, estimated_currency = ?,
+               sold_price = ?, sold_currency = ?, sold_at = ?, loaned_to = ?, loaned_at = ?, loan_due = ?
              WHERE id = ?`,
             trimmedTitle, status, story.trim() || null, purchasePrice, estimatedValue, valuedAt,
-            purchasePrice === null ? null : purchaseCur, estimatedValue === null ? null : estimatedCur, id!
+            purchasePrice === null ? null : purchaseCur, estimatedValue === null ? null : estimatedCur,
+            ...extra, id!
           );
           await db.runAsync('DELETE FROM item_values WHERE item_id = ?', id!);
           await db.runAsync('DELETE FROM item_photos WHERE item_id = ?', id!);
@@ -404,11 +485,13 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
           // Yeni parça en üste eklenir
           const res = await db.runAsync(
             `INSERT INTO items (collection_id, title, status, story,
-               purchase_price, estimated_value, valued_at, purchase_currency, estimated_currency, sort_order)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+               purchase_price, estimated_value, valued_at, purchase_currency, estimated_currency,
+               sold_price, sold_currency, sold_at, loaned_to, loaned_at, loan_due, sort_order)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM items WHERE collection_id = ?))`,
             cid, trimmedTitle, status, story.trim() || null, purchasePrice, estimatedValue, valuedAt,
-            purchasePrice === null ? null : purchaseCur, estimatedValue === null ? null : estimatedCur, cid
+            purchasePrice === null ? null : purchaseCur, estimatedValue === null ? null : estimatedCur,
+            ...extra, cid
           );
           id = res.lastInsertRowId;
         }
@@ -425,7 +508,17 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
             'INSERT INTO item_photos (item_id, uri, sort_order) VALUES (?, ?, ?)', id!, ref, i
           );
         }
+        if (valueChanged) {
+          await db.runAsync(
+            'INSERT INTO value_history (item_id, value, currency, recorded_at) VALUES (?, ?, ?, ?)',
+            id!, estimatedValue, estimatedCur, valuedAt ?? new Date().toISOString()
+          );
+        }
       });
+
+      // Dönüş tarihi girildiyse hatırlatma için izin istenir (ayarlardan kapatılmadıysa)
+      if (status === 'loaned' && dueDay && (await getNotifPrefs(db)).loans) await ensurePermission();
+      syncNotifications(db, t);
 
       // Düzenlemede kaldırılan fotoğrafların dosyalarını temizle
       originalRefs.current.filter(r => !refs.includes(r)).forEach(deletePhoto);
@@ -475,11 +568,25 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
     );
 
   return (
+    <View style={s.container}>
     <ScrollView
       style={s.container}
       contentContainerStyle={s.content}
       keyboardShouldPersistTaps="handled"
       automaticallyAdjustKeyboardInsets
+      scrollEventThrottle={32}
+      onScroll={e => {
+        scrollBox.current.y = e.nativeEvent.contentOffset.y;
+        updateAtEnd();
+      }}
+      onLayout={e => {
+        scrollBox.current.h = e.nativeEvent.layout.height;
+        updateAtEnd();
+      }}
+      onContentSizeChange={(_, h) => {
+        scrollBox.current.content = h;
+        updateAtEnd();
+      }}
     >
       <ScrollView
         horizontal
@@ -551,11 +658,67 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
       />
 
       <FieldLabel>{t('form.status')}</FieldLabel>
-      <Segmented
+      <Chips
         options={STATUS_KEYS.map(k => ({ key: k, label: t(`status.${k}`) }))}
         value={status}
-        onChange={setStatus}
+        onChange={changeStatus}
       />
+
+      {status === 'sold' && (
+        <View style={s.statusBox}>
+          <View style={s.valueRow}>
+            <View style={{ flex: 1 }}>
+              <FieldLabel>{t('sold.price')}</FieldLabel>
+              <View style={s.moneyBox}>
+                <TextInput
+                  style={[s.input, { flex: 1 }]}
+                  value={soldPrice}
+                  onChangeText={setSoldPrice}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  placeholderTextColor={C.grey}
+                />
+                <CurrencyPicker value={soldCur} onChange={setSoldCur} t={t} />
+              </View>
+            </View>
+            <View style={{ flex: 1 }}>
+              <FieldLabel>{t('sold.date')}</FieldLabel>
+              <DateInput value={soldAt} onChange={setSoldAt} />
+            </View>
+          </View>
+        </View>
+      )}
+
+      {status === 'loaned' && (
+        <View style={s.statusBox}>
+          <FieldLabel>{t('loan.to')}</FieldLabel>
+          <TextInput
+            style={s.input}
+            value={loanedTo}
+            onChangeText={setLoanedTo}
+            placeholder={t('loan.toPh')}
+            placeholderTextColor={C.grey}
+          />
+          <View style={s.valueRow}>
+            <View style={{ flex: 1 }}>
+              <FieldLabel>{t('loan.since')}</FieldLabel>
+              <DateInput value={loanedAt} onChange={setLoanedAt} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <FieldLabel>{t('loan.due')}</FieldLabel>
+              <DateInput value={loanDue} onChange={setLoanDue} />
+            </View>
+          </View>
+          <View style={s.quickRow}>
+            {(['1w', '2w', '1m', '3m', 'none'] as const).map(k => (
+              <Pressable key={k} onPress={() => setDueIn(k)} style={s.quick} hitSlop={4}>
+                <Text style={s.quickText}>{t(`loan.in.${k}`)}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={s.hint}>{t('loan.hint')}</Text>
+        </View>
+      )}
 
       {topFields.map(renderField)}
 
@@ -632,6 +795,17 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
         </Pressable>
       )}
     </ScrollView>
+    {!atEnd && (
+      <View style={[s.floatSave, { paddingBottom: insets.bottom + 12 }]} pointerEvents="box-none">
+        <PrimaryButton
+          label={saving ? t('common.saving') : isEdit ? t('form.saveChanges') : t('form.save')}
+          onPress={save}
+          disabled={saving}
+          style={s.floatButton}
+        />
+      </View>
+    )}
+    </View>
   );
 }
 
@@ -658,6 +832,24 @@ function CurrencyPicker({ value, onChange, t }: {
       <Text style={s.curText}>{value}</Text>
       <Ionicons name="chevron-down" size={12} color={C.black} />
     </Pressable>
+  );
+}
+
+// Gün kutusu: TR "GG.AA.YYYY", EN "MM/DD/YYYY"; kayıtta çözümlenir
+function DateInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { C } = useTheme();
+  const s = useStyles(makeStyles);
+  const { lang } = useI18n();
+  return (
+    <TextInput
+      style={s.input}
+      value={value}
+      onChangeText={v => onChange(v.replace(/[^0-9./\-]/g, ''))}
+      keyboardType="numbers-and-punctuation"
+      placeholder={dayInputPlaceholder(lang)}
+      placeholderTextColor={C.grey}
+      maxLength={10}
+    />
   );
 }
 
@@ -780,6 +972,15 @@ const makeStyles = (C: Palette) => StyleSheet.create({
     marginTop: 20, paddingVertical: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.line,
   },
   emptyToggleText: { fontFamily: F.semi, fontSize: 14, color: C.grey },
+  statusBox: { marginTop: 4, paddingLeft: 14, borderLeftWidth: 2, borderLeftColor: C.black },
+  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  quick: { borderWidth: 1, borderColor: C.black, paddingHorizontal: 10, paddingVertical: 6 },
+  quickText: { fontFamily: F.semi, fontSize: 12, color: C.black },
+  floatSave: { position: 'absolute', left: 20, right: 20, bottom: 0 },
+  floatButton: {
+    opacity: 0.88,
+    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 6,
+  },
   deleteButton: { marginTop: 20, paddingVertical: 14, alignItems: 'center' },
   deleteText: { fontFamily: F.semi, fontSize: 15, color: C.black, textDecorationLine: 'underline' },
 });

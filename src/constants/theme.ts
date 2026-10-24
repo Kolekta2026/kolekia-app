@@ -97,7 +97,19 @@ export const F = {
 };
 
 // Etiketler dil dosyasında: t(`status.${key}`)
-export const STATUS_KEYS = ['owned', 'wishlist', 'trade'] as const;
+export const STATUS_KEYS = ['owned', 'wishlist', 'trade', 'loaned', 'sold'] as const;
+export type StatusKey = (typeof STATUS_KEYS)[number];
+
+// Koleksiyonun parça sayısına ve değerine sayılanlar: elde olanlar ve ödünç verilenler
+export const countsAsOwned = (status: string) => status === 'owned' || status === 'loaned';
+
+// Izgaradaki küçük rozet (Koleksiyonda olanlarda rozet yok)
+export const STATUS_ICON: Record<string, 'heart' | 'swap-horizontal' | 'arrow-redo' | 'pricetag'> = {
+  wishlist: 'heart',
+  trade: 'swap-horizontal',
+  loaned: 'arrow-redo',
+  sold: 'pricetag',
+};
 
 
 // --- Özel tema: kullanıcının seçtiği iki renkten gündüz/gece/canlı hâlleri üretilir ---

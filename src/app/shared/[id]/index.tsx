@@ -5,7 +5,7 @@ import {
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Ionicons } from '@expo/vector-icons';
-import { F, STATUS_KEYS } from '../../../constants/theme';
+import { F, STATUS_ICON, STATUS_KEYS } from '../../../constants/theme';
 import { Palette, useStyles, useTheme } from '../../../lib/theme';
 import { useI18n } from '../../../lib/i18n';
 import { photoUri } from '../../../lib/photos';
@@ -181,7 +181,7 @@ export default function SharedListScreen() {
               {cols === 4 ? (
                 item.status !== 'owned' && (
                   <View style={s.badge}>
-                    <Ionicons name={item.status === 'wishlist' ? 'heart' : 'swap-horizontal'} size={10} color="#FFFFFF" />
+                    <Ionicons name={STATUS_ICON[item.status] ?? 'ellipse'} size={10} color="#FFFFFF" />
                   </View>
                 )
               ) : (

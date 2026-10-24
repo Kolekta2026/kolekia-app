@@ -20,6 +20,9 @@ import type { Currency } from '../../../lib/i18n';
 import { buildQuery, marketSites } from '../../../lib/market';
 import { useMenu } from '../../../lib/menu';
 import { aiAvailable } from '../../../lib/gemini';
+import { daysUntil, formatDay } from '../../../lib/dates';
+import { ValueHistory } from '../../../components/ValueHistory';
+import { StoryShare } from '../../../components/StoryShare';
 
 type Item = {
   title: string;
@@ -32,6 +35,12 @@ type Item = {
   valued_at: string | null;
   purchase_currency: string | null;
   estimated_currency: string | null;
+  sold_price: number | null;
+  sold_currency: string | null;
+  sold_at: string | null;
+  loaned_to: string | null;
+  loaned_at: string | null;
+  loan_due: string | null;
 };
 type Detail = { name: string; type: string; value: string | null };
 
@@ -54,6 +63,7 @@ export default function ItemScreen() {
   const [details, setDetails] = useState<Detail[]>([]);
   const [page, setPage] = useState(0);
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [storyOpen, setStoryOpen] = useState(false);
 
   // Düzenleme ekranından dönünce de yenilensin
   useFocusEffect(
@@ -62,7 +72,8 @@ export default function ItemScreen() {
         const it = await db.getFirstAsync<Item & { collection_id: number }>(`
           SELECT i.title, i.status, i.story, i.collection_id, c.name AS collection_name,
             c.template, i.purchase_price, i.estimated_value, i.valued_at,
-            i.purchase_currency, i.estimated_currency
+            i.purchase_currency, i.estimated_currency,
+            i.sold_price, i.sold_currency, i.sold_at, i.loaned_to, i.loaned_at, i.loan_due
           FROM items i JOIN collections c ON c.id = i.collection_id
           WHERE i.id = ?`, id);
         if (!it) return;
@@ -86,9 +97,10 @@ export default function ItemScreen() {
     }, [db, id, reload])
   );
 
-  // ⋯ menüsü: kopyala ve başka koleksiyona taşı
+  // ⋯ menüsü: hikâyede paylaş, kopyala ve başka koleksiyona taşı
   function moreMenu() {
     menu(item!.title, undefined, [
+      { text: t('story.title'), onPress: () => setStoryOpen(true) },
       { text: t('item.duplicate'), onPress: duplicate },
       { text: t('item.move'), onPress: pickTarget },
     ]);
@@ -150,6 +162,19 @@ export default function ItemScreen() {
     }
   }
 
+  // Satış: alış fiyatına göre kâr / zarar (birimler farklıysa kurla, "≈")
+  const sCur = (item.sold_currency ?? currency) as Currency;
+  let profit: number | null = null;
+  let profitApprox = false;
+  if (item.status === 'sold' && item.sold_price !== null && item.purchase_price !== null) {
+    const p = convert(item.purchase_price, pCur, sCur, rates);
+    if (p !== null) {
+      profit = item.sold_price - p;
+      profitApprox = pCur !== sCur;
+    }
+  }
+  const loanLeft = item.status === 'loaned' && item.loan_due ? daysUntil(item.loan_due) : null;
+
   // Görselle ara: ekrandaki fotoğraf doğrudan Google Lens'te aranır (uygulama içinde)
   function searchByImage() {
     const uri = photos[page] ?? photos[0];
@@ -180,6 +205,9 @@ export default function ItemScreen() {
           title: '',
           headerRight: () => (
             <View style={s.headerActions}>
+              <Pressable hitSlop={12} accessibilityLabel={t('story.title')} onPress={() => setStoryOpen(true)}>
+                <Ionicons name="logo-instagram" size={22} color={C.black} />
+              </Pressable>
               <Pressable
                 hitSlop={12}
                 accessibilityLabel={t('share.title')}
@@ -234,6 +262,28 @@ export default function ItemScreen() {
           <Text style={s.title}>{item.title}</Text>
           <Text style={s.collection}>{item.collection_name}</Text>
 
+          {item.status === 'loaned' && (
+            <View style={s.statusCard}>
+              <Ionicons name="arrow-redo" size={18} color={C.black} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.statusCardTitle}>
+                  {item.loaned_to ? t('loan.withName', { name: item.loaned_to }) : t('status.loaned')}
+                </Text>
+                {item.loaned_at && (
+                  <Text style={s.statusCardSub}>{t('loan.sinceDate', { date: formatDay(item.loaned_at, lang) })}</Text>
+                )}
+                {item.loan_due && (
+                  <Text style={[s.statusCardSub, loanLeft !== null && loanLeft < 0 && { color: C.accent, fontFamily: F.bold }]}>
+                    {t('loan.dueDate', { date: formatDay(item.loan_due, lang) })}
+                    {loanLeft === null ? '' : loanLeft < 0
+                      ? ` · ${t('loan.overdue', { n: -loanLeft })}`
+                      : loanLeft === 0 ? ` · ${t('loan.today')}` : ` · ${t('loan.left', { n: loanLeft })}`}
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
+
           {details.length > 0 && (
             <View style={s.table}>
               {details.map(d => (
@@ -247,7 +297,7 @@ export default function ItemScreen() {
 
           <View style={s.valueBlock}>
             <Text style={s.valueTitle}>{t('value.title')}</Text>
-            {(item.purchase_price !== null || item.estimated_value !== null) && (
+            {(item.purchase_price !== null || item.estimated_value !== null || item.sold_price !== null) && (
               <View style={s.valueTable}>
                 {item.estimated_value !== null && (
                   <View style={s.row}>
@@ -268,7 +318,24 @@ export default function ItemScreen() {
                     <Text style={s.rowValue}>{money(item.purchase_price, pCur)}</Text>
                   </View>
                 )}
-                {gain !== null && (
+                {item.status === 'sold' && item.sold_price !== null && (
+                  <View style={s.row}>
+                    <Text style={s.rowLabel}>{t('sold.price')}</Text>
+                    <View style={{ alignItems: 'flex-end', flexShrink: 1 }}>
+                      <Text style={s.rowValue}>{money(item.sold_price, sCur)}</Text>
+                      {item.sold_at && <Text style={s.valueDate}>{formatDay(item.sold_at, lang)}</Text>}
+                    </View>
+                  </View>
+                )}
+                {profit !== null && (
+                  <View style={s.row}>
+                    <Text style={s.rowLabel}>{t(profit < 0 ? 'sold.loss' : 'sold.profit')}</Text>
+                    <Text style={[s.rowValue, profit < 0 && { color: C.accent }]}>
+                      {profitApprox ? '≈ ' : ''}{profit > 0 ? '+' : profit < 0 ? '−' : ''}{money(Math.abs(profit), sCur)}
+                    </Text>
+                  </View>
+                )}
+                {gain !== null && item.status !== 'sold' && (
                   <View style={s.row}>
                     <Text style={s.rowLabel}>{t('value.gain')}</Text>
                     <Text style={[s.rowValue, gain < 0 && { color: C.accent }]}>
@@ -277,6 +344,9 @@ export default function ItemScreen() {
                   </View>
                 )}
               </View>
+            )}
+            {item.estimated_value !== null && (
+              <ValueHistory itemId={id} currency={eCur} rates={rates} refresh={`${reload}:${item.valued_at ?? ''}:${item.estimated_currency ?? ''}`} />
             )}
             <View style={s.searchRow}>
               <SecondaryButton label={t('value.search')} onPress={searchMarket} style={{ flex: 1 }} />
@@ -307,6 +377,17 @@ export default function ItemScreen() {
         </View>
       )}
 
+      <StoryShare
+        visible={storyOpen}
+        onClose={() => setStoryOpen(false)}
+        item={{
+          title: item.title,
+          collection: item.collection_name,
+          photo: photos[0] ?? null,
+          lines: details.map(d => ({ k: d.name, v: d.type === 'boolean' ? t('common.yes') : d.value! })),
+        }}
+      />
+
       <PhotoViewer
         photos={photos}
         index={page}
@@ -319,6 +400,12 @@ export default function ItemScreen() {
 
 const makeStyles = (C: Palette) => StyleSheet.create({
   searchRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  statusCard: {
+    flexDirection: 'row', gap: 12, alignItems: 'flex-start', marginTop: 18,
+    padding: 14, borderWidth: 1.5, borderColor: C.black,
+  },
+  statusCardTitle: { fontFamily: F.bold, fontSize: 15, color: C.black },
+  statusCardSub: { fontFamily: F.regular, fontSize: 13, color: C.grey, marginTop: 3 },
   container: { flex: 1, backgroundColor: C.white },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 20 },
   busy: {

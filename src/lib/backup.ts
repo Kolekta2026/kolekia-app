@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Directory, File, Paths } from 'expo-file-system';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { DB_VERSION } from '../db/schema';
+import { DB_VERSION, seedValueHistory } from '../db/schema';
 import { newExportFile, shareUri } from './share';
 
 const FORMAT = 'koleksiyon-backup';
@@ -16,6 +16,7 @@ const TABLES = [
   'items',
   'item_values',
   'item_photos',
+  'value_history',
   'settings',
   'shared_lists',
 ] as const;
@@ -185,6 +186,8 @@ export async function restoreBackup(db: SQLiteDatabase, { data, zip }: LoadedBac
         );
       }
     }
+    // 1.7 öncesi yedeklerde değer geçmişi yok: mevcut tahmini değerler ilk kayıt olur
+    await seedValueHistory(db);
   });
 
   // 3) Artık hiçbir parçaya ait olmayan eski fotoğrafları temizle

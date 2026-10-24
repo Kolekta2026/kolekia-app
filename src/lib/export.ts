@@ -7,6 +7,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import type { Currency, Lang, TFunction } from './i18n';
 import { APP_NAME } from '../constants/brand';
 import { templateLabel } from '../constants/templates';
+import { countsAsOwned } from '../constants/theme';
 import { photoUri } from './photos';
 import { newExportFile, shareUri, uniqueStamp } from './share';
 import { formatDate, formatMoney } from './money';
@@ -390,7 +391,7 @@ export async function exportPdf(
     if (layout === 'item') {
       sections.push(`<section>${parts.join('')}</section>`);
     } else {
-      const owned = c.items.filter(i => i.status === 'owned' && i.estimated_value !== null)
+      const owned = c.items.filter(i => countsAsOwned(i.status) && i.estimated_value !== null)
         .map(i => ({ v: i.estimated_value!, c: (i.estimated_currency ?? currency) as Currency }));
       const total = includeValues ? summarize(owned, currency, rates, lang, t) : null;
       const heading = layout === 'list'

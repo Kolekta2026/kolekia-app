@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSQLiteContext } from 'expo-sqlite';
 import { router, useFocusEffect } from 'expo-router';
@@ -17,6 +17,7 @@ import { APP_NAME } from '../constants/brand';
 import { exportCsv, exportPdf } from '../lib/export';
 import { pickAndImport, ShareImportError } from '../lib/shareData';
 import { useLock } from '../lib/lock';
+import { DigestMode, ensurePermission, getNotifPrefs, setNotifPref, syncNotifications } from '../lib/notifications';
 
 export default function SettingsScreen() {
   const lock = useLock();
@@ -29,6 +30,25 @@ export default function SettingsScreen() {
   const [scope, setScope] = useState('all');
   const toastRef = useRef<ToastHandle>(null);
   const [busy, setBusy] = useState<null | 'export' | 'import' | 'pdf' | 'csv'>(null);
+  const [notif, setNotif] = useState<{ loans: boolean; digest: DigestMode }>({ loans: true, digest: 'off' });
+
+  useFocusEffect(useCallback(() => { getNotifPrefs(db).then(setNotif); }, [db]));
+
+  // Bir bildirim türü açılınca izin istenir; reddedildiyse sistem ayarlarına yönlendirilir
+  async function changeNotif(key: 'loans' | 'digest', value: boolean | DigestMode) {
+    const turningOn = value === true || value === 'daily' || value === 'weekly';
+    if (turningOn && !(await ensurePermission())) {
+      Alert.alert(t('notif.deniedTitle'), t('notif.denied'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('notif.openSettings'), onPress: () => Linking.openSettings() },
+      ]);
+      return;
+    }
+    const next = { ...notif, [key]: value } as typeof notif;
+    setNotif(next);
+    await setNotifPref(db, key, key === 'loans' ? (value ? '1' : '0') : String(value));
+    await syncNotifications(db, t);
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -228,6 +248,32 @@ export default function SettingsScreen() {
             />
           </View>
           <Text style={s.hint}>{t('lock.hint', { method: lock.methodLabel })}</Text>
+        </View>
+
+        <View style={s.section}>
+          <FieldLabel>{t('notif.section')}</FieldLabel>
+          <View style={s.switchRow}>
+            <Text style={s.switchLabel}>{t('notif.loans')}</Text>
+            <Switch
+              value={notif.loans}
+              onValueChange={on => changeNotif('loans', on)}
+              trackColor={{ true: C.black, false: C.line }}
+              thumbColor={Platform.OS === 'android' ? C.white : undefined}
+              ios_backgroundColor={C.line}
+            />
+          </View>
+          <Text style={s.hint}>{t('notif.loansHint')}</Text>
+          <Text style={[s.switchLabel, { marginTop: 20, marginBottom: 10 }]}>{t('notif.digest')}</Text>
+          <Segmented
+            options={[
+              { key: 'off', label: t('notif.off') },
+              { key: 'weekly', label: t('notif.weekly') },
+              { key: 'daily', label: t('notif.daily') },
+            ]}
+            value={notif.digest}
+            onChange={k => changeNotif('digest', k as DigestMode)}
+          />
+          <Text style={s.hint}>{t('notif.digestHint')}</Text>
         </View>
 
         <View style={s.section}>
