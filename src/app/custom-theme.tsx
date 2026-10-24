@@ -31,9 +31,14 @@ export default function CustomThemeScreen() {
   }
 
   function save() {
-    setCustom(colors);
-    setColorTheme('custom');
+    // Önce ekran kapanır, tema geçiş bittikten sonra uygulanır. Android'de kapanış animasyonu
+    // sürerken tüm başlık ve ekran renklerinin birden değişmesi uygulamayı çökertiyordu.
     router.back();
+    const next = colors;
+    setTimeout(() => {
+      setCustom(next);
+      setColorTheme('custom');
+    }, 450);
   }
 
   return (

@@ -1,10 +1,11 @@
 // "Örnek koleksiyonla dene": yeni kullanıcı uygulamayı dolu hâliyle gezebilsin diye
 // birkaç örnek parça yüklenir. Örnek koleksiyonun kimliği ayarlarda tutulur;
 // tek dokunuşla (fotoğraflarıyla birlikte) silinir.
-import { Asset } from 'expo-asset';
+import { Directory, File, Paths } from 'expo-file-system';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { Lang } from './i18n';
-import { persistPhoto } from './photos';
+import { DEMO_PHOTOS } from './demoPhotos';
+import { base64ToBytes } from './shareData';
 import { deleteItemsForever } from './trash';
 
 const KEY = 'demo_collection';
@@ -13,7 +14,7 @@ type L = { tr: string; en: string };
 type DemoItem = {
   title: L;
   status: 'owned' | 'wishlist' | 'trade';
-  photo?: number; // require(...) ile paketlenmiş görsel
+  photo?: string; // DEMO_PHOTOS anahtarı
   story?: L;
   value?: number; // tahmini değer (TRY)
   fields: Record<'brand' | 'model' | 'year' | 'condition', L | undefined>;
@@ -32,7 +33,7 @@ const ITEMS: DemoItem[] = [
   {
     title: l('Gümüş cep saati', 'Silver pocket watch'),
     status: 'owned',
-    photo: require('../../assets/demo/cep-saati.jpg'),
+    photo: 'cep-saati',
     story: l(
       'Dedemden kaldı. Kapağının içinde baş harfleri kazılı; hâlâ her sabah kuruluyor.',
       "Inherited from my grandfather. His initials are engraved inside the lid; it still gets wound every morning."
@@ -43,7 +44,7 @@ const ITEMS: DemoItem[] = [
   {
     title: l('Bronz kadranlı dalgıç saat', 'Bronze-dial dive watch'),
     status: 'owned',
-    photo: require('../../assets/demo/dalgic-saat.jpg'),
+    photo: 'dalgic-saat',
     story: l(
       'İlk maaşımla aldığım saat. Yaz tatillerinin vazgeçilmezi.',
       'Bought with my first salary. A summer holiday essential.'
@@ -54,7 +55,7 @@ const ITEMS: DemoItem[] = [
   {
     title: l('10 euro cent', '10 euro cent'),
     status: 'owned',
-    photo: require('../../assets/demo/euro-cent.jpg'),
+    photo: 'euro-cent',
     story: l('Bir Roma gezisinde cebimde kalan ilk euro.', 'The first euro left in my pocket after a trip to Rome.'),
     value: 150,
     fields: { brand: l('İtalya', 'Italy'), model: undefined, year: l('2002', '2002'), condition: l('Orta', 'Fair') },
@@ -62,14 +63,14 @@ const ITEMS: DemoItem[] = [
   {
     title: l('1 cent (ABD)', '1 cent (USA)'),
     status: 'trade',
-    photo: require('../../assets/demo/abd-cent.jpg'),
+    photo: 'abd-cent',
     value: 120,
     fields: { brand: l('ABD', 'USA'), model: undefined, year: l('1977', '1977'), condition: l('İyi', 'Good') },
   },
   {
     title: l('Sovyet film fotoğraf makinesi', 'Soviet film camera'),
     status: 'owned',
-    photo: require('../../assets/demo/film-makinesi.jpg'),
+    photo: 'film-makinesi',
     story: l(
       'Babamın gençliğinden kalma. Helios lensiyle hâlâ fotoğraf çekiyor, ışık ölçeri biraz yorgun.',
       "From my father's youth. Still shoots with its Helios lens; the light meter is a little tired."
@@ -80,7 +81,7 @@ const ITEMS: DemoItem[] = [
   {
     title: l('İsveç taş plağı (78 devir)', 'Swedish 78 rpm shellac record'),
     status: 'owned',
-    photo: require('../../assets/demo/tas-plak.jpg'),
+    photo: 'tas-plak',
     story: l(
       'Bir sahafta orijinal kâğıt kılıfıyla buldum. Gramofonda hâlâ çalıyor.',
       'Found it at a second-hand shop in its original paper sleeve. Still plays on the gramophone.'
@@ -91,7 +92,7 @@ const ITEMS: DemoItem[] = [
   {
     title: l('Makaralı teyp', 'Reel-to-reel tape recorder'),
     status: 'owned',
-    photo: require('../../assets/demo/makarali-teyp.jpg'),
+    photo: 'makarali-teyp',
     story: l(
       'Rahmetli amcamın salonunun baş köşesindeydi. Makaraları da orijinal, ikisi hâlâ dönüyor.',
       "It had pride of place in my late uncle's living room. The reels are original and both still turn."
@@ -102,7 +103,7 @@ const ITEMS: DemoItem[] = [
   {
     title: l('Karışık kasetler', 'Mixtapes'),
     status: 'owned',
-    photo: require('../../assets/demo/kasetler.jpg'),
+    photo: 'kasetler',
     story: l(
       "Lise yıllarında radyodan kaydettiğim kasetler. Etiketlerin yarısı silinmiş ama hangisinde ne olduğunu hâlâ biliyorum.",
       "Tapes I recorded off the radio in high school. Half the labels have faded, but I still know what's on each one."
@@ -113,7 +114,7 @@ const ITEMS: DemoItem[] = [
   {
     title: l('Teneke yarış arabası', 'Tin racing car'),
     status: 'wishlist',
-    photo: require('../../assets/demo/teneke-araba.jpg'),
+    photo: 'teneke-araba',
     story: l(
       'Bir antikacının vitrininde gördüm; 54 numaralı pembe yarışçı. Fiyatı düşerse alacağım.',
       "Spotted it in an antique shop window: the pink number 54 racer. If the price drops, it's mine."
@@ -131,12 +132,19 @@ export async function getDemoCollectionId(db: SQLiteDatabase): Promise<number | 
   return exists ? id : null;
 }
 
-// Paketlenmiş görseli uygulamanın fotoğraf klasörüne kopyalar
-async function bundlePhoto(mod: number): Promise<string | null> {
+// Koda gömülü örnek fotoğrafı uygulamanın fotoğraf klasörüne yazar.
+// (Paketlenmiş görsel dosyaları Android yayın sürümünde dosya yolu olarak okunamıyordu.)
+async function bundlePhoto(key: string): Promise<string | null> {
   try {
-    const asset = Asset.fromModule(mod);
-    await asset.downloadAsync();
-    return asset.localUri ? persistPhoto(asset.localUri) : null;
+    const data = DEMO_PHOTOS[key];
+    if (!data) return null;
+    const dir = new Directory(Paths.document, 'photos');
+    if (!dir.exists) dir.create();
+    const name = `demo-${key}-${Date.now()}.jpg`;
+    const file = new File(dir, name);
+    file.create();
+    file.write(base64ToBytes(data));
+    return `photos/${name}`;
   } catch {
     return null;
   }
@@ -190,6 +198,26 @@ export async function loadDemo(db: SQLiteDatabase, lang: Lang): Promise<number> 
     await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', KEY, String(colId));
   });
   return colId;
+}
+
+// 1.7 öncesi Android'de örnek fotoğraflar kopyalanamamıştı (kayıtta geçersiz yol kaldı).
+// Örnek koleksiyon duruyorsa bu parçaların fotoğrafları yeniden yazılır.
+export async function repairDemoPhotos(db: SQLiteDatabase) {
+  const id = await getDemoCollectionId(db);
+  if (!id) return false;
+  const broken = await db.getAllAsync<{ photo_id: number; sort_order: number }>(`
+    SELECT p.id AS photo_id, i.sort_order FROM item_photos p JOIN items i ON i.id = p.item_id
+     WHERE i.collection_id = ? AND p.uri NOT LIKE 'photos/%' AND p.uri NOT LIKE 'file:%'`, id);
+  let fixed = false;
+  for (const b of broken) {
+    const key = ITEMS[b.sort_order]?.photo;
+    const ref = key ? await bundlePhoto(key) : null;
+    if (ref) {
+      await db.runAsync('UPDATE item_photos SET uri = ? WHERE id = ?', ref, b.photo_id);
+      fixed = true;
+    }
+  }
+  return fixed;
 }
 
 // Örnek koleksiyonu fotoğraflarıyla birlikte tamamen siler

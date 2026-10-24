@@ -24,7 +24,7 @@ import { deleteSharedList, pickAndImport, ShareImportError } from '../lib/shareD
 import { parseSortMode, sortItems, type SortMode } from '../lib/sort';
 import { useMenu } from '../lib/menu';
 import { EmptyShowcase } from '../components/EmptyShowcase';
-import { getDemoCollectionId, loadDemo, removeDemo } from '../lib/demo';
+import { getDemoCollectionId, repairDemoPhotos, loadDemo, removeDemo } from '../lib/demo';
 
 type CollectionRow = { id: number; name: string; cover: string | null; all_count: number };
 type ItemRow = {
@@ -65,6 +65,10 @@ export default function HomeScreen() {
   const [cols, setCols] = useState<2 | 3 | 4>(3);
   const [sortPrefs, setSortPrefs] = useState<Record<number, SortMode>>({});
   const cell = (width - GRID_GAP * (cols - 1)) / cols;
+  // İsteğe bağlı: fotoğrafın altında parça adı (ve tüm koleksiyonlar görünümünde koleksiyon adı)
+  const [showTitles, setShowTitles] = useState(false);
+  const captionH = cols === 4 ? 24 : 46;
+  const tileH = cell + (showTitles ? captionH : 0);
   const { t, lang, setLang, currency } = useI18n();
   const rates = useFxRates();
   const menu = useMenu();
@@ -108,6 +112,8 @@ export default function HomeScreen() {
     );
     setSortPrefs(Object.fromEntries(sortRows.map(r => [Number(r.key.slice(5)), parseSortMode(r.value)])));
     const colPref = await db.getFirstAsync<{ value: string }>("SELECT value FROM settings WHERE key = 'home_cols'");
+    const titlePref = await db.getFirstAsync<{ value: string }>("SELECT value FROM settings WHERE key = 'home_titles'");
+    setShowTitles(titlePref?.value === '1');
     const nc = Number(colPref?.value);
     if (nc === 2 || nc === 3 || nc === 4) setCols(nc);
     const mask = await db.getFirstAsync<{ value: string }>(
@@ -134,6 +140,8 @@ export default function HomeScreen() {
         return { id: r.id, title: r.sender || r.title, cover };
       })
     );
+    // Eski Android sürümünde boş kalmış örnek fotoğraflar onarılırsa liste yeniden okunur
+    if (await repairDemoPhotos(db)) return load();
     setDemoId(await getDemoCollectionId(db));
     setCollections(cols);
     setItems(its);
@@ -170,6 +178,31 @@ export default function HomeScreen() {
     if (status !== 'all') list = list.filter(i => i.status === status);
     return list;
   }, [items, selected, status, sortPrefs, currency, rates]);
+
+  function toggleTitles() {
+    const next = !showTitles;
+    setShowTitles(next);
+    db.runAsync("INSERT OR REPLACE INTO settings (key, value) VALUES ('home_titles', ?)", next ? '1' : '0');
+  }
+
+  const collectionName = (id: number) => collections.find(c => c.id === id)?.name ?? '';
+  // Fotoğrafın altındaki ad satırları
+  const caption = (item: { title: string; collection_id: number }) =>
+    showTitles ? (
+      <View style={[s.caption, { height: captionH }]}>
+        <Text
+          style={[s.captionTitle, cols === 4 && { fontSize: 11 }, cols === 2 && { fontSize: 14 }]}
+          numberOfLines={1}
+        >
+          {item.title}
+        </Text>
+        {cols !== 4 && (
+          <Text style={s.captionSub} numberOfLines={1}>
+            {selected === null ? collectionName(item.collection_id) : ''}
+          </Text>
+        )}
+      </View>
+    ) : null;
 
   // Izgara sütun sayısı: 3 → 4 → 2 → 3 ... (tercih hatırlanır)
   function cycleCols() {
@@ -336,7 +369,7 @@ export default function HomeScreen() {
   function indexAt(x: number, y: number) {
     const step = cell + GRID_GAP;
     const col = Math.min(cols - 1, Math.max(0, Math.floor(x / step)));
-    const row = Math.max(0, Math.floor(y / step));
+    const row = Math.max(0, Math.floor(y / (tileH + GRID_GAP)));
     return Math.min(visible.length - 1, row * cols + col);
   }
   function applyRange(cur: number) {
@@ -631,6 +664,17 @@ export default function HomeScreen() {
             <Text style={[s.tabLabel, selecting && s.tabLabelOn]}>{selecting ? t('common.cancel') : t('select.button')}</Text>
           </Pressable>
           <Pressable
+            onPress={toggleTitles}
+            style={s.colsBtn}
+            accessibilityLabel={t('home.titles')}
+            accessibilityState={{ selected: showTitles }}
+          >
+            <View style={[s.aaCircle, showTitles && s.aaCircleOn]}>
+              <Text style={[s.aaText, showTitles && s.aaTextOn]}>Aa</Text>
+            </View>
+            <Text style={[s.tabLabel, showTitles && s.tabLabelOn]}>{t('home.titles')}</Text>
+          </Pressable>
+          <Pressable
             onPress={cycleCols}
             style={s.colsBtn}
             accessibilityLabel={t('collection.columns', { n: cols })}
@@ -683,17 +727,18 @@ export default function HomeScreen() {
                 <Pressable
                   key={item.id}
                   onPress={() => togglePick(item.id)}
-                  style={{ width: cell, height: cell }}
+                  style={{ width: cell, height: tileH }}
                   accessibilityLabel={item.title}
                   accessibilityState={{ selected: on }}
                 >
-                  <View style={s.cell}>
+                  <View style={[s.cell, { flex: 0, height: cell }]}>
                     {uri ? (
                       <Image source={{ uri }} style={StyleSheet.absoluteFill} />
                     ) : (
                       <Text style={s.cellTitle} numberOfLines={3}>{item.title}</Text>
                     )}
                   </View>
+                  {caption(item)}
                   {on && <View style={s.selShade} />}
                   <View style={[s.selDot, on && s.selDotOn]}>
                     {on && <Ionicons name="checkmark" size={16} color={C.onBrand} />}
@@ -722,16 +767,17 @@ export default function HomeScreen() {
               return (
                 <Pressable
                   onPress={() => openItem(item.id)}
-                  style={({ pressed }) => [{ width: cell, height: cell }, pressed && { opacity: 0.7 }]}
+                  style={({ pressed }) => [{ width: cell, height: tileH }, pressed && { opacity: 0.7 }]}
                   accessibilityLabel={item.title}
                 >
-                  <View style={s.cell}>
+                  <View style={[s.cell, { flex: 0, height: cell }]}>
                     {uri ? (
                       <Image source={{ uri }} style={StyleSheet.absoluteFill} />
                     ) : (
                       <Text style={s.cellTitle} numberOfLines={3}>{item.title}</Text>
                     )}
                   </View>
+                  {caption(item)}
                   {item.collection_id === demoId && (
                     <View style={s.demoTag}><Text style={s.demoTagText}>{t('demo.tag')}</Text></View>
                   )}
@@ -920,6 +966,16 @@ const makeStyles = (C: Palette) => StyleSheet.create({
   },
   selAllText: { fontFamily: F.bold, fontSize: 15, color: C.black },
   cellTitle: { fontFamily: F.bold, fontSize: 13, color: C.black, textAlign: 'center' },
+  aaCircle: {
+    width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: C.grey,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  aaCircleOn: { backgroundColor: C.black, borderColor: C.black },
+  aaText: { fontFamily: F.bold, fontSize: 9.5, color: C.grey, includeFontPadding: false },
+  aaTextOn: { color: C.white },
+  caption: { paddingHorizontal: 6, paddingTop: 5, justifyContent: 'flex-start' },
+  captionTitle: { fontFamily: F.bold, fontSize: 12.5, color: C.black },
+  captionSub: { fontFamily: F.regular, fontSize: 11, color: C.grey, marginTop: 1 },
   demoBar: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     marginHorizontal: 16, marginTop: 4, marginBottom: 10, padding: 12, borderWidth: 1.5, borderColor: C.black,

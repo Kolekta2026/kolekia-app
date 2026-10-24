@@ -16,7 +16,9 @@ export function useMenu() {
   return useCallback(
     (title: string | undefined, message: string | undefined, buttons: AlertButton[]) => {
       const items = buttons.filter(b => b.style !== 'cancel');
-      const options = [...items.map(b => b.text ?? ''), t('common.cancel')];
+      // Vazgeç düğmesine özel bir ad verildiyse (ör. "Fotoğrafı sonra ekle") o kullanılır
+      const cancelText = buttons.find(b => b.style === 'cancel')?.text || t('common.cancel');
+      const options = [...items.map(b => b.text ?? ''), cancelText];
       const destructive = items.flatMap((b, i) => (b.style === 'destructive' ? [i] : []));
       showActionSheetWithOptions(
         {

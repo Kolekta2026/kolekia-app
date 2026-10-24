@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
@@ -23,6 +23,7 @@ import {
 } from '../lib/aiFill';
 import { addFieldToTemplate } from '../lib/templateExtras';
 import { learnPairs, splitPair, type Pair } from '../lib/fieldI18n';
+import { PhotoEditor } from './PhotoEditor';
 import { aiAvailable, aiDailyLimit, aiRemaining, countAiUse, hasAiConsent, identifyItem, refreshAiLimit, setAiConsent } from '../lib/gemini';
 import { ActivityIndicator } from 'react-native';
 
@@ -34,7 +35,10 @@ type PhotoEntry = { key: string; ref: string | null; uri: string };
 let keySeq = 0;
 const nextKey = () => `p${++keySeq}`;
 
-export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: number; itemId?: number; autoAi?: boolean }) {
+export function ItemForm({ collectionId, itemId, autoAi, askPhoto }: {
+  collectionId?: number; itemId?: number; autoAi?: boolean;
+  askPhoto?: boolean; // yeni parçada ekran açılır açılmaz kamera / galeri seçeneği sorulur
+}) {
   const { C } = useTheme();
   const s = useStyles(makeStyles);
   const db = useSQLiteContext();
@@ -46,8 +50,13 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
   const [fields, setFields] = useState<FieldDef[]>([]);
   const [values, setValues] = useState<Record<number, string>>({});
   const [title, setTitle] = useState('');
+  // Ad önerileri: daha önce girilmiş parça adları (önce bu koleksiyondakiler)
+  const [knownTitles, setKnownTitles] = useState<{ title: string; cid: number }[]>([]);
+  const [titleFocused, setTitleFocused] = useState(false);
   const [status, setStatus] = useState('owned');
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
+  // Kırpma / döndürme ekranında açık olan fotoğrafın sırası
+  const [editIndex, setEditIndex] = useState<number | null>(null);
   const [story, setStory] = useState('');
 
   // Google Lens'ten kopyalanan metin hikâyenin sonuna eklenir
@@ -172,6 +181,31 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
       : kind === '1m' ? addMonths(from, 1) : addMonths(from, 3);
     setLoanDue(dayToInput(day, lang));
   }
+
+  useEffect(() => {
+    db.getAllAsync<{ title: string; cid: number }>(
+      `SELECT title, MAX(collection_id) AS cid FROM items
+        WHERE deleted_at IS NULL AND (? IS NULL OR id <> ?)
+        GROUP BY title ORDER BY MAX(created_at) DESC LIMIT 3000`,
+      itemId ?? null, itemId ?? null
+    ).then(setKnownTitles).catch(() => {});
+  }, [db, itemId]);
+
+  const suggestions = useMemo(() => {
+    const q = norm(title);
+    if (q.length < 2) return [];
+    const seen = new Set<string>();
+    return knownTitles
+      .filter(k => {
+        const n = norm(k.title);
+        if (n === q || !n.includes(q) || seen.has(n)) return false;
+        seen.add(n);
+        return true;
+      })
+      .map(k => ({ ...k, score: (k.cid === cid ? 0 : 2) + (norm(k.title).startsWith(q) ? 0 : 1) }))
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 5);
+  }, [title, knownTitles, cid]);
 
   const setValue = (fieldId: number, v: string) => setValues(prev => ({ ...prev, [fieldId]: v }));
 
@@ -318,7 +352,11 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
       }
       const res = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
       if (!res.canceled) {
-        setPhotos(prev => [...prev, { key: nextKey(), ref: null, uri: res.assets[0].uri }]);
+        // Çekilen fotoğraf hemen düzenleme ekranında açılır (istenirse doğrudan "Bitti")
+        setPhotos(prev => {
+          setEditIndex(prev.length);
+          return [...prev, { key: nextKey(), ref: null, uri: res.assets[0].uri }];
+        });
       }
       return;
     }
@@ -331,7 +369,11 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
     });
     if (!res.canceled) {
       const added = res.assets.map(a => ({ key: nextKey(), ref: null, uri: a.uri }));
-      setPhotos(prev => [...prev, ...added]);
+      setPhotos(prev => {
+        // Tek fotoğraf seçildiyse düzenleme ekranı açılır; çoklu seçimde her biri sonradan düzenlenebilir
+        if (added.length === 1) setEditIndex(prev.length);
+        return [...prev, ...added];
+      });
     }
   }
 
@@ -403,8 +445,24 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
     ]);
   }
 
+  // Yeni parça: ekran açılınca fotoğraf kaynağı hemen sorulur (bir dokunuş daha kazanılır)
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!askPhoto || isEdit || !ready || asked.current || photos.length) return;
+    asked.current = true;
+    const timer = setTimeout(() => {
+      menu(t('form.addPhoto'), undefined, [
+        { text: t('form.takePhoto'), onPress: () => pick('camera') },
+        { text: t('form.library'), onPress: () => pick('library') },
+        { text: t('form.photoLater'), style: 'cancel' },
+      ]);
+    }, 450); // ekranın açılış animasyonu bitsin
+    return () => clearTimeout(timer);
+  }, [askPhoto, isEdit, ready]);
+
   function photoMenu(index: number) {
     menu(t('form.photo'), undefined, [
+      { text: t('edit.menu'), onPress: () => setEditIndex(index) },
       { text: t('lens.button'), onPress: () => openLens(index) },
       ...(index > 0
         ? [{
@@ -655,7 +713,25 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
         onChangeText={setTitle}
         placeholder={t('form.namePh')}
         placeholderTextColor={C.grey}
+        onFocus={() => setTitleFocused(true)}
+        onBlur={() => setTimeout(() => setTitleFocused(false), 150)}
+        autoCorrect={false}
       />
+      {titleFocused && suggestions.length > 0 && (
+        <View style={s.suggest}>
+          {suggestions.map(sg => (
+            <Pressable
+              key={sg.title}
+              onPress={() => setTitle(sg.title)}
+              style={({ pressed }) => [s.suggestItem, pressed && { backgroundColor: C.paper }]}
+              accessibilityLabel={sg.title}
+            >
+              <Ionicons name="time-outline" size={14} color={C.grey} />
+              <Text style={s.suggestText} numberOfLines={1}>{sg.title}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
       <FieldLabel>{t('form.status')}</FieldLabel>
       <Chips
@@ -795,6 +871,18 @@ export function ItemForm({ collectionId, itemId, autoAi }: { collectionId?: numb
         </Pressable>
       )}
     </ScrollView>
+    <PhotoEditor
+      visible={editIndex !== null}
+      uri={editIndex !== null ? photos[editIndex]?.uri ?? null : null}
+      onCancel={() => setEditIndex(null)}
+      onDone={uri => {
+        const i = editIndex;
+        setEditIndex(null);
+        if (i === null) return;
+        // Düzenlenen fotoğraf yeni dosyadır; eskisi kayıtta temizlenir
+        setPhotos(prev => prev.map((p, j) => (j === i ? { key: p.key, ref: null, uri } : p)));
+      }}
+    />
     {!atEnd && (
       <View style={[s.floatSave, { paddingBottom: insets.bottom + 12 }]} pointerEvents="box-none">
         <PrimaryButton
@@ -972,6 +1060,9 @@ const makeStyles = (C: Palette) => StyleSheet.create({
     marginTop: 20, paddingVertical: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.line,
   },
   emptyToggleText: { fontFamily: F.semi, fontSize: 14, color: C.grey },
+  suggest: { borderWidth: 1, borderColor: C.line, borderTopWidth: 0 },
+  suggestItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10 },
+  suggestText: { flex: 1, fontFamily: F.medium, fontSize: 15, color: C.black },
   statusBox: { marginTop: 4, paddingLeft: 14, borderLeftWidth: 2, borderLeftColor: C.black },
   quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   quick: { borderWidth: 1, borderColor: C.black, paddingHorizontal: 10, paddingVertical: 6 },

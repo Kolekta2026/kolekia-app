@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { countsAsOwned, F, STATUS_ICON, STATUS_KEYS } from '../../../constants/theme';
 import { Palette, useStyles, useTheme } from '../../../lib/theme';
 import { Chips, PrimaryButton, Segmented } from '../../../components/ui';
+import { formatAdded } from '../../../lib/dates';
 import { Toast, ToastHandle } from '../../../components/Toast';
 import { photoUri } from '../../../lib/photos';
 import { askAndSharePdf } from '../../../lib/shareAction';
@@ -340,6 +341,9 @@ export default function CollectionScreen() {
                           {item.title}
                         </Text>
                         {cols === 2 && item.subtitle && <Text style={s.itemSub} numberOfLines={1}>{item.subtitle}</Text>}
+                        <Text style={[s.itemDate, cols === 3 && { fontSize: 10.5 }]} numberOfLines={1}>
+                          {formatAdded(item.created_at, lang)}
+                        </Text>
                       </>
                     )}
                   </Pressable>
@@ -447,6 +451,7 @@ const makeStyles = (C: Palette) => StyleSheet.create({
   initial: { fontFamily: F.black, fontSize: 56, color: C.black, opacity: 0.12 },
   status: { fontFamily: F.bold, fontSize: 12, color: C.accent, marginTop: 10 },
   itemTitle: { fontFamily: F.bold, fontSize: 15, color: C.black, marginTop: 8, lineHeight: 19 },
+  itemDate: { fontFamily: F.regular, fontSize: 11.5, color: C.grey, marginTop: 2 },
   itemSub: { fontFamily: F.regular, fontSize: 13, color: C.grey, marginTop: 2 },
   empty: { paddingHorizontal: PAD },
   emptyTitle: { fontFamily: F.medium, fontSize: 16, color: C.grey },

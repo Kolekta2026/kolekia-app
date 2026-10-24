@@ -71,3 +71,10 @@ export function inputToDay(input: string, lang: Lang): string | null {
   if (d.getMonth() !== month - 1) return null; // 31 Şubat gibi
   return toDay(d);
 }
+
+// SQLite'ın "YYYY-MM-DD HH:MM:SS" (UTC) zaman damgası için kısa tarih: "22 Eki 2026" / "Oct 22, 2026"
+export function formatAdded(stamp: string, lang: Lang): string {
+  const d = new Date(stamp.includes('T') ? stamp : stamp.replace(' ', 'T') + 'Z');
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+}
