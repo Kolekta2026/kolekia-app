@@ -10,6 +10,7 @@ import { templateLabel } from '../constants/templates';
 import { countsAsOwned } from '../constants/theme';
 import { photoUri } from './photos';
 import { newExportFile, shareUri, uniqueStamp } from './share';
+import { setProgress, yieldToUi } from './progress';
 import { formatDate, formatMoney } from './money';
 import { loadCachedRates, summarize } from './fx';
 import { base64ToBytes, embedPayload, type SharedPayload } from './shareData';
@@ -120,6 +121,7 @@ export async function exportCsv(db: SQLiteDatabase, collectionId: number | null,
   const data = await loadData(db, { collectionId }, ctx);
   const count = data.reduce((n, c) => n + c.items.length, 0);
   if (count === 0) return false;
+  setProgress({ kind: 'csv', stage: 'build' });
 
   // Türkçe Excel noktalı virgül bekler (virgül ondalık ayracıdır)
   const sep = lang === 'tr' ? ';' : ',';
@@ -157,6 +159,7 @@ export async function exportCsv(db: SQLiteDatabase, collectionId: number | null,
   const file = newExportFile(`${APP_NAME}-${safeName(scopeName)}-${uniqueStamp()}.csv`);
   file.create();
   file.write('\uFEFF' + rows.join('\r\n')); // BOM: Excel Türkçe karakterleri doğru okusun
+  setProgress(null);
   await shareUri(file.uri, 'text/csv', 'public.comma-separated-values-text');
   return true;
 }
@@ -243,16 +246,22 @@ const CSS = `
   .story { font-size: 12px; line-height: 1.55; margin-top: 18px; }
   .story .k { display: block; font-size: 10px; margin-bottom: 4px; }
 
-  /* Katalog */
-  .cards { display: flex; flex-wrap: wrap; column-gap: 22px; margin-top: 20px; }
-  .card { width: calc(50% - 11px); margin-bottom: 22px; page-break-inside: avoid; }
+  /* Katalog: satır başına bir parça, fotoğraf kırpılmadan sabit karede */
+  .crows { margin-top: 8px; }
+  .crow { display: flex; gap: 18px; padding: 14px 0; border-bottom: 0.6px solid #cfcfcf; page-break-inside: avoid; }
   .page + .page { page-break-before: always; }
-  .card .photo { width: 100%; height: 175px; }
-  .mini { display: flex; gap: 4px; margin-top: 4px; }
-  .mini img { width: 32px; height: 32px; }
-  .card .name { font-weight: 800; font-size: 15px; letter-spacing: -0.3px; margin-top: 10px; }
-  .card .line { font-size: 10.5px; margin-top: 4px; }
-  .card .st { font-weight: 800; font-size: 10px; margin-top: 8px; }
+  .frame { width: 140px; height: 140px; flex-shrink: 0; background: #f4f4f4; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .frame img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
+  .mini { display: flex; gap: 4px; margin-top: 8px; }
+  .mf { width: 34px; height: 34px; background: #f4f4f4; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .mf img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
+  .info { flex: 1; min-width: 0; }
+  .info .st { font-weight: 800; font-size: 10px; margin-bottom: 3px; }
+  .info .name { font-weight: 800; font-size: 17px; letter-spacing: -0.3px; line-height: 1.15; }
+  .kvs { margin-top: 8px; display: flex; flex-wrap: wrap; column-gap: 18px; }
+  .kv { width: calc(50% - 9px); display: flex; justify-content: space-between; gap: 8px; font-size: 10.5px; padding: 4px 0; border-bottom: 0.4px solid #e2e2e2; }
+  .kv .k { font-weight: 800; flex-shrink: 0; max-width: 50%; }
+  .kv .v { text-align: right; min-width: 0; overflow-wrap: anywhere; }
 
   /* Liste */
   .row { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 0.6px solid #cfcfcf; page-break-inside: avoid; }
@@ -321,6 +330,8 @@ export async function exportPdf(
     scope.itemId ? 'item' : scope.status === 'wishlist' || scope.status === 'trade' ? 'list' : 'catalog';
 
   const sections: string[] = [];
+  let doneItems = 0;
+  setProgress({ kind: 'pdf', stage: 'collect', done: 0, total: count });
   for (const c of data) {
     if (c.items.length === 0) continue;
     const shared: SharedPayload['collections'][number] = { name: c.name, label: c.label, items: [] };
@@ -329,6 +340,9 @@ export async function exportPdf(
     const parts: string[] = [];
     const MAX_PHOTOS = 10; // parça başına içe aktarmaya konan en fazla fotoğraf
     for (const [idx, it] of c.items.entries()) {
+      doneItems++;
+      setProgress({ kind: 'pdf', stage: 'collect', done: doneItems, total: count });
+      await yieldToUi();
       const cover = await thumbData(it.cover, layout === 'item' ? 1200 : 600);
       // Kapak dışındaki fotoğraflar (hem PDF'te küçük kareler hem içe aktarma verisi için)
       const extraRefs = await db.getAllAsync<{ uri: string }>(
@@ -377,13 +391,19 @@ export async function exportPdf(
             <div class="box"></div>
           </div>`);
       } else {
+        // Katalog: her parça bir satır. Fotoğraf sabit bir karenin içine kırpılmadan sığdırılır,
+        // yanında tüm özellikler etiket / değer olarak sıralanır.
         parts.push(`
-          <div class="card">
-            ${cover ? `<img class="photo" src="${cover}" />` : `<div class="photo ph" style="font-size:64px">${initial(it.title)}</div>`}
-            ${others.length ? `<div class="mini">${others.slice(0, 6).map(o => `<img src="${o}" />`).join('')}</div>` : ''}
-            ${it.status !== 'owned' ? `<div class="st">${statusText(it.status)}</div>` : ''}
-            <div class="name">${esc(it.title)}</div>
-            ${props.slice(0, 3).map(p => `<div class="line"><b>${esc(p.k)}</b> ${esc(p.v)}</div>`).join('')}
+          <div class="crow">
+            ${cover
+              ? `<div class="frame"><img src="${cover}" /></div>`
+              : `<div class="frame ph" style="font-size:56px">${initial(it.title)}</div>`}
+            <div class="info">
+              ${it.status !== 'owned' ? `<div class="st">${statusText(it.status)}</div>` : ''}
+              <div class="name">${esc(it.title)}</div>
+              <div class="kvs">${props.slice(0, 10).map(p => `<div class="kv"><span class="k">${esc(p.k)}</span><span class="v">${esc(p.v)}</span></div>`).join('')}</div>
+              ${others.length ? `<div class="mini">${others.slice(0, 6).map(o => `<div class="mf"><img src="${o}" /></div>`).join('')}</div>` : ''}
+            </div>
           </div>`);
       }
     }
@@ -401,18 +421,19 @@ export async function exportPdf(
         ? [c.name, t('export.itemCount', { n: c.items.length })]
         : [c.label, t('export.itemCount', { n: c.items.length }), ...(total ? [total.text] : [])];
 
-      // Sayfalara biz bölüyoruz: iPhone'un PDF motoru kartları ortasından bölebiliyor.
-      // Katalogda sayfa başına 2 sıra (4 kart), listede 5 satır.
+      // Sayfalara biz bölüyoruz: iPhone'un PDF motoru satırları ortasından bölebiliyor.
+      // Katalogda sayfa başına 4 parça (başlıklı ilk sayfada 3), listede 5 satır.
       const perPage = layout === 'list' ? 5 : 4;
+      const firstPage = layout === 'list' ? 5 : 3;
       const pages: string[] = [];
-      for (let i = 0; i < parts.length; i += perPage) {
-        const chunk = parts.slice(i, i + perPage).join('');
+      for (let i = 0; i < parts.length; i += i === 0 ? firstPage : perPage) {
+        const chunk = parts.slice(i, i + (i === 0 ? firstPage : perPage)).join('');
         const head = i === 0
           ? `${top(layout === 'list' ? today : t('export.catalog'))}
              <h1>${esc(heading)}</h1>
              <div class="sub">${subParts.map(esc).join('&nbsp;&nbsp;·&nbsp;&nbsp;')}</div>`
           : top(heading);
-        pages.push(`<div class="page">${head}${layout === 'list' ? chunk : `<div class="cards">${chunk}</div>`}</div>`);
+        pages.push(`<div class="page">${head}${layout === 'list' ? chunk : `<div class="crows">${chunk}</div>`}</div>`);
       }
       sections.push(`<section>${pages.join('')}</section>`);
     }
@@ -424,6 +445,8 @@ export async function exportPdf(
   // PDF'i içerik (base64) olarak alıp kendi klasörümüze yazıyoruz; Kolekia kullanan biri
   // içe aktarabilsin diye veriyi PDF'in içine ek olarak gömüyoruz
   // A4 boyutu ve kenar boşlukları (iOS @page kuralını her zaman uygulamıyor)
+  setProgress({ kind: 'pdf', stage: 'build' });
+  await yieldToUi();
   const { base64 } = await Print.printToFileAsync({
     html,
     base64: true,
@@ -436,6 +459,7 @@ export async function exportPdf(
   const file = newExportFile(`${APP_NAME}-${safeName(scopeName)}-${uniqueStamp()}.pdf`);
   file.create();
   file.write(pdf);
+  setProgress(null);
   await shareUri(file.uri, 'application/pdf', 'com.adobe.pdf');
   return true;
 }

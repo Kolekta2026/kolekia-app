@@ -31,6 +31,10 @@ type FieldDef = { id: number; name: string; type: FieldType; options: string | n
 
 // ref: veritabanındaki kayıtlı yol (yeni seçilenlerde null), uri: ekranda gösterilecek adres
 type PhotoEntry = { key: string; ref: string | null; uri: string };
+type VideoEntry = { ref: string | null; uri: string; duration: number | null };
+
+const MAX_PHOTOS = 10;
+const MAX_VIDEO_SEC = 60; // parça başına bir video, en fazla bir dakika
 
 let keySeq = 0;
 const nextKey = () => `p${++keySeq}`;
@@ -57,6 +61,8 @@ export function ItemForm({ collectionId, itemId, autoAi, askPhoto }: {
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   // Kırpma / döndürme ekranında açık olan fotoğrafın sırası
   const [editIndex, setEditIndex] = useState<number | null>(null);
+  const [video, setVideo] = useState<VideoEntry | null>(null);
+  const originalVideo = useRef<string | null>(null);
   const [story, setStory] = useState('');
 
   // Google Lens'ten kopyalanan metin hikâyenin sonuna eklenir
@@ -153,6 +159,13 @@ export function ItemForm({ collectionId, itemId, autoAi, askPhoto }: {
           'SELECT uri FROM item_photos WHERE item_id = ? ORDER BY sort_order', itemId
         );
         originalRefs.current = ph.map(p => p.uri);
+        const vid = await db.getFirstAsync<{ uri: string; duration: number | null }>(
+          'SELECT uri, duration FROM item_videos WHERE item_id = ? ORDER BY id LIMIT 1', itemId
+        );
+        if (vid) {
+          originalVideo.current = vid.uri;
+          setVideo({ ref: vid.uri, uri: photoUri(vid.uri)!, duration: vid.duration });
+        }
         setPhotos(ph.map(p => ({ key: nextKey(), ref: p.uri, uri: photoUri(p.uri)! })));
       }
       setCid(resolved);
@@ -344,6 +357,11 @@ export function ItemForm({ collectionId, itemId, autoAi, askPhoto }: {
   // --- Fotoğraflar ---
 
   async function pick(source: 'camera' | 'library') {
+    // Parça başına en fazla 10 fotoğraf (video ayrıca)
+    if (photos.length >= MAX_PHOTOS) {
+      Alert.alert(t('form.photoLimitTitle'), t('form.photoLimit', { n: MAX_PHOTOS }));
+      return;
+    }
     if (source === 'camera') {
       const perm = await ImagePicker.requestCameraPermissionsAsync();
       if (!perm.granted) {
@@ -364,7 +382,7 @@ export function ItemForm({ collectionId, itemId, autoAi, askPhoto }: {
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
       orderedSelection: true,
-      selectionLimit: 10,
+      selectionLimit: MAX_PHOTOS - photos.length,
       quality: 0.8,
     });
     if (!res.canceled) {
@@ -375,6 +393,43 @@ export function ItemForm({ collectionId, itemId, autoAi, askPhoto }: {
         return [...prev, ...added];
       });
     }
+  }
+
+  // --- Video (parça başına bir tane) ---
+  async function pickVideo(source: 'camera' | 'library') {
+    const opts: ImagePicker.ImagePickerOptions = {
+      mediaTypes: ['videos'],
+      videoMaxDuration: MAX_VIDEO_SEC,
+      allowsEditing: true, // iOS'ta kırpma (baş / son) ekranı açılır
+      videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
+    };
+    if (source === 'camera') {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(t('err.cameraTitle'), t('err.camera'));
+        return;
+      }
+    }
+    const res = source === 'camera'
+      ? await ImagePicker.launchCameraAsync(opts)
+      : await ImagePicker.launchImageLibraryAsync(opts);
+    if (res.canceled) return;
+    const a = res.assets[0];
+    const sec = a.duration ? a.duration / 1000 : null;
+    if (sec !== null && sec > MAX_VIDEO_SEC + 1) {
+      Alert.alert(t('video.tooLongTitle'), t('video.tooLong', { n: MAX_VIDEO_SEC }));
+      return;
+    }
+    setVideo({ ref: null, uri: a.uri, duration: sec });
+  }
+
+  function videoMenu() {
+    menu(t('video.title'), video ? undefined : t('video.hint', { n: MAX_VIDEO_SEC }), [
+      { text: t('video.record'), onPress: () => pickVideo('camera') },
+      { text: t('video.library'), onPress: () => pickVideo('library') },
+      ...(video ? [{ text: t('video.remove'), style: 'destructive' as const, onPress: () => setVideo(null) }] : []),
+      { text: t('common.cancel'), style: 'cancel' as const },
+    ]);
   }
 
   // Kapak fotoğrafını Gemini'ye gönderip alanları doldurur
@@ -505,6 +560,7 @@ export function ItemForm({ collectionId, itemId, autoAi, askPhoto }: {
     setSaving(true);
     try {
       const refs = photos.map(p => p.ref ?? persistPhoto(p.uri));
+      const videoRef = video ? video.ref ?? persistPhoto(video.uri) : null;
       const purchasePrice = parseMoney(purchase, lang);
       const estimatedValue = parseMoney(estimated, lang);
       const soldValue = status === 'sold' ? parseMoney(soldPrice, lang) : null;
@@ -566,6 +622,12 @@ export function ItemForm({ collectionId, itemId, autoAi, askPhoto }: {
             'INSERT INTO item_photos (item_id, uri, sort_order) VALUES (?, ?, ?)', id!, ref, i
           );
         }
+        await db.runAsync('DELETE FROM item_videos WHERE item_id = ?', id!);
+        if (videoRef) {
+          await db.runAsync(
+            'INSERT INTO item_videos (item_id, uri, duration) VALUES (?, ?, ?)', id!, videoRef, video?.duration ?? null
+          );
+        }
         if (valueChanged) {
           await db.runAsync(
             'INSERT INTO value_history (item_id, value, currency, recorded_at) VALUES (?, ?, ?, ?)',
@@ -580,6 +642,7 @@ export function ItemForm({ collectionId, itemId, autoAi, askPhoto }: {
 
       // Düzenlemede kaldırılan fotoğrafların dosyalarını temizle
       originalRefs.current.filter(r => !refs.includes(r)).forEach(deletePhoto);
+      if (originalVideo.current && originalVideo.current !== videoRef) deletePhoto(originalVideo.current);
       router.back();
     } catch (e) {
       Alert.alert(t('err.saveFailed'), String(e));
@@ -670,6 +733,15 @@ export function ItemForm({ collectionId, itemId, autoAi, askPhoto }: {
       {photos.length > 1 && (
         <Text style={s.hint}>{t('form.photoHint')}</Text>
       )}
+      <Pressable onPress={videoMenu} style={({ pressed }) => [s.videoBtn, pressed && { backgroundColor: C.paper }]}>
+        <Ionicons name={video ? 'videocam' : 'videocam-outline'} size={18} color={C.black} />
+        <Text style={s.videoText}>
+          {video
+            ? video.duration ? t('video.added', { d: fmtDuration(video.duration) }) : t('video.addedNoTime')
+            : t('video.add', { n: MAX_VIDEO_SEC })}
+        </Text>
+        <Ionicons name={video ? 'ellipsis-horizontal' : 'add'} size={18} color={C.grey} />
+      </Pressable>
       {photos.length > 0 && aiAvailable && (
         <Pressable
           onPress={() => runAi()}
@@ -973,6 +1045,8 @@ function FieldInput({ def, value, onChange, t }: {
 
 const THUMB = 104;
 
+const fmtDuration = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+
 const makeStyles = (C: Palette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.white },
   content: { padding: 20, paddingBottom: 48 },
@@ -1063,6 +1137,11 @@ const makeStyles = (C: Palette) => StyleSheet.create({
   suggest: { borderWidth: 1, borderColor: C.line, borderTopWidth: 0 },
   suggestItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10 },
   suggestText: { flex: 1, fontFamily: F.medium, fontSize: 15, color: C.black },
+  videoBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12,
+    paddingVertical: 11, paddingHorizontal: 14, borderWidth: 1, borderColor: C.line,
+  },
+  videoText: { flex: 1, fontFamily: F.semi, fontSize: 14, color: C.black },
   statusBox: { marginTop: 4, paddingLeft: 14, borderLeftWidth: 2, borderLeftColor: C.black },
   quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   quick: { borderWidth: 1, borderColor: C.black, paddingHorizontal: 10, paddingVertical: 6 },

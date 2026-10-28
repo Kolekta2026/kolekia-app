@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const DB_VERSION = 10;
+export const DB_VERSION = 11;
 
 export async function migrateDb(db: SQLiteDatabase) {
   // Yabancı anahtarlar her bağlantıda ayrıca açılmalı
@@ -190,6 +190,21 @@ export async function migrateDb(db: SQLiteDatabase) {
       ALTER TABLE field_defs ADD COLUMN name_en TEXT;
     `);
     version = 10;
+  }
+
+  // v11 (1.8): parça başına bir video (dosya photos/ klasöründe, fotoğraflarla birlikte yedeklenir)
+  if (version < 11) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS item_videos (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id     INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+        uri         TEXT NOT NULL,
+        duration    REAL,                       -- saniye
+        created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_item_videos_item ON item_videos(item_id);
+    `);
+    version = 11;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DB_VERSION}`);

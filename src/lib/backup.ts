@@ -5,6 +5,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { DB_VERSION, seedValueHistory } from '../db/schema';
 import { newExportFile, shareUri } from './share';
+import { setProgress, yieldToUi } from './progress';
 
 const FORMAT = 'koleksiyon-backup';
 
@@ -16,6 +17,7 @@ const TABLES = [
   'items',
   'item_values',
   'item_photos',
+  'item_videos',
   'value_history',
   'settings',
   'shared_lists',
@@ -49,7 +51,15 @@ export async function createBackup(db: SQLiteDatabase, fileName: string) {
   }
 
   const zip = new JSZip();
-  for (const row of tables.item_photos) {
+  const media = [...tables.item_photos, ...(tables.item_videos ?? [])];
+  let done = 0;
+  setProgress({ kind: 'backup', stage: 'collect', done, total: media.length });
+  for (const row of media) {
+    done++;
+    if (done % 5 === 0 || done === media.length) {
+      setProgress({ kind: 'backup', stage: 'collect', done, total: media.length });
+      await yieldToUi();
+    }
     const ref = String(row.uri);
     try {
       const file = ref.startsWith('file:') ? new File(ref) : new File(Paths.document, ref);
@@ -87,6 +97,8 @@ export async function createBackup(db: SQLiteDatabase, fileName: string) {
   };
   zip.file('data.json', JSON.stringify(data));
 
+  setProgress({ kind: 'backup', stage: 'build' });
+  await yieldToUi();
   // Fotoğraflar zaten sıkıştırılmış (JPEG), tekrar sıkıştırmak sadece yavaşlatır
   const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'STORE' });
 
@@ -94,6 +106,7 @@ export async function createBackup(db: SQLiteDatabase, fileName: string) {
   const out = newExportFile(`${fileName}-${stamp}.zip`);
   out.create();
   out.write(bytes);
+  setProgress(null); // paylaşım menüsünün önünde durmasın
   await shareUri(out.uri, 'application/zip', 'public.zip-archive');
 }
 
@@ -143,6 +156,7 @@ export async function pickBackup(): Promise<LoadedBackup | null> {
 // ---------- Geri yükleme ----------
 
 export async function restoreBackup(db: SQLiteDatabase, { data, zip }: LoadedBackup) {
+  setProgress({ kind: 'restore', stage: 'build' });
   // 1) Fotoğrafları yaz (adlar benzersiz; aynı ad varsa aynı dosyadır)
   const dir = new Directory(Paths.document, 'photos');
   if (!dir.exists) dir.create();
@@ -191,7 +205,7 @@ export async function restoreBackup(db: SQLiteDatabase, { data, zip }: LoadedBac
   });
 
   // 3) Artık hiçbir parçaya ait olmayan eski fotoğrafları temizle
-  const refs = new Set((data.tables.item_photos ?? []).map(r => String(r.uri)));
+  const refs = new Set([...(data.tables.item_photos ?? []), ...(data.tables.item_videos ?? [])].map(r => String(r.uri)));
   for (const entry of dir.list()) {
     if (entry instanceof File && !refs.has(`photos/${entry.name}`)) {
       try { entry.delete(); } catch {}

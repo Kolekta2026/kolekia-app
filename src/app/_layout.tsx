@@ -22,6 +22,7 @@ import { ActionSheetProvider } from '@expo/react-native-action-sheet';
 import Sortable from 'react-native-sortables';
 import { LockProvider } from '../lib/lock';
 import { itemIdFromResponse, syncNotifications } from '../lib/notifications';
+import { ProgressHost } from '../components/ProgressHost';
 
 async function initDb(db: SQLiteDatabase) {
   await migrateDb(db);
@@ -110,6 +111,7 @@ function AppStack() {
       <Stack.Screen name="shared/[id]/item" options={{ title: '' }} />
       <Stack.Screen name="import" options={{ title: '', headerShown: false }} />
     </Stack>
+    <ProgressHost />
     </>
   );
 }

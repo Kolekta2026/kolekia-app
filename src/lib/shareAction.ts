@@ -2,6 +2,7 @@ import { Alert } from 'react-native';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { Currency, Lang, TFunction } from './i18n';
 import { exportPdf, type Scope } from './export';
+import { setProgress } from './progress';
 
 // Paylaşmadan önce değerlerin dahil edilip edilmeyeceğini sorar.
 // Varsayılan (ilk) seçenek değerler olmadan paylaşmaktır.
@@ -21,6 +22,7 @@ export function askAndSharePdf(
     } catch (e) {
       Alert.alert(t('backup.failed'), String(e));
     } finally {
+      setProgress(null); // hata olsa da ilerleme kartı kapanır
       setBusy(false);
     }
   };

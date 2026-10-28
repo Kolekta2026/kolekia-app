@@ -17,6 +17,7 @@ import { APP_NAME } from '../constants/brand';
 import { exportCsv, exportPdf } from '../lib/export';
 import { pickAndImport, ShareImportError } from '../lib/shareData';
 import { useLock } from '../lib/lock';
+import { setProgress } from '../lib/progress';
 import { DigestMode, ensurePermission, getNotifPrefs, setNotifPref, syncNotifications } from '../lib/notifications';
 
 export default function SettingsScreen() {
@@ -75,6 +76,7 @@ export default function SettingsScreen() {
     } catch (e) {
       Alert.alert(t('backup.failed'), String(e));
     } finally {
+      setProgress(null);
       setBusy(null);
     }
   }
@@ -86,6 +88,7 @@ export default function SettingsScreen() {
     } catch (e) {
       Alert.alert(t('backup.failed'), String(e));
     } finally {
+      setProgress(null);
       setBusy(null);
     }
   }
@@ -123,10 +126,13 @@ export default function SettingsScreen() {
               try {
                 await restoreBackup(db, backup);
                 await reloadPrefs();
+                setProgress(null);
                 toastRef.current?.show(t('backup.done'));
               } catch (e) {
+                setProgress(null);
                 Alert.alert(t('backup.failed'), String(e));
               } finally {
+                setProgress(null);
                 setBusy(null);
               }
             },

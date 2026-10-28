@@ -23,6 +23,7 @@ import { aiAvailable } from '../../../lib/gemini';
 import { daysUntil, formatDay } from '../../../lib/dates';
 import { ValueHistory } from '../../../components/ValueHistory';
 import { StoryShare } from '../../../components/StoryShare';
+import { VideoBlock } from '../../../components/VideoBlock';
 
 type Item = {
   title: string;
@@ -64,6 +65,7 @@ export default function ItemScreen() {
   const [page, setPage] = useState(0);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [storyOpen, setStoryOpen] = useState(false);
+  const [video, setVideo] = useState<string | null>(null);
 
   // Düzenleme ekranından dönünce de yenilensin
   useFocusEffect(
@@ -84,6 +86,10 @@ export default function ItemScreen() {
           'SELECT uri FROM item_photos WHERE item_id = ? ORDER BY sort_order', id
         );
         setPhotos(ph.map(p => photoUri(p.uri)!));
+        const vid = await db.getFirstAsync<{ uri: string }>(
+          'SELECT uri FROM item_videos WHERE item_id = ? ORDER BY id LIMIT 1', id
+        );
+        setVideo(vid ? photoUri(vid.uri) : null);
         setPage(0);
 
         const rows = await db.getAllAsync<Detail>(`
@@ -283,6 +289,8 @@ export default function ItemScreen() {
               </View>
             </View>
           )}
+
+          {video && <VideoBlock key={video} uri={video} />}
 
           {details.length > 0 && (
             <View style={s.table}>
