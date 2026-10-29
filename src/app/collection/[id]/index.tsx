@@ -19,6 +19,7 @@ import { useI18n } from '../../../lib/i18n';
 import { summarize, useFxRates } from '../../../lib/fx';
 import type { Currency } from '../../../lib/i18n';
 import { useMenu } from '../../../lib/menu';
+import { CollageShare } from '../../../components/CollageShare';
 import { parseSortMode, sortItems, SORT_MODES, type SortMode } from '../../../lib/sort';
 
 type ItemRow = {
@@ -67,6 +68,7 @@ export default function CollectionScreen() {
   const [dragging, setDragging] = useState(false);
   const [overTrash, setOverTrash] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [collageOpen, setCollageOpen] = useState(false);
 
   // Ödünç ve Satıldı filtreleri yalnızca o durumda parça varken görünür
   const present = new Set(items.map(i => i.status));
@@ -207,6 +209,7 @@ export default function CollectionScreen() {
                 accessibilityLabel={t('fields.edit')}
                 onPress={() =>
                   menu(name, undefined, [
+                    ...(items.length ? [{ text: t('collage.menu'), onPress: () => setCollageOpen(true) }] : []),
                     { text: t('batch.menu'), onPress: () => router.push(`/collection/${collectionId}/batch`) },
                     { text: t('fields.edit'), onPress: () => router.push(`/collection/${collectionId}/fields`) },
                     { text: t('common.cancel'), style: 'cancel' },
@@ -404,6 +407,15 @@ export default function CollectionScreen() {
         </View>
       )}
       <Toast ref={toastRef} bottom={insets.bottom + 84} />
+      {collageOpen && (
+        <CollageShare
+          visible
+          collection={name}
+          // Açık filtre ve sıralama neyse kolajın parça listesi de o sırayla gelir
+          items={visible.map(i => ({ id: i.id, title: i.title, photo: photoUri(i.cover) }))}
+          onClose={() => setCollageOpen(false)}
+        />
+      )}
     </View>
   );
 }
