@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Directory, File, Paths } from 'expo-file-system';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { DB_VERSION, seedValueHistory } from '../db/schema';
+import { DB_VERSION, seedValueHistory, upgradeNumismaticGrades } from '../db/schema';
 import { newExportFile, shareUri } from './share';
 import { setProgress, yieldToUi } from './progress';
 
@@ -202,6 +202,8 @@ export async function restoreBackup(db: SQLiteDatabase, { data, zip }: LoadedBac
     }
     // 1.7 öncesi yedeklerde değer geçmişi yok: mevcut tahmini değerler ilk kayıt olur
     await seedValueHistory(db);
+    // 1.8 öncesi yedeklerde para/banknot kondisyonu eski genel listede: yeni derecelere geçir
+    await upgradeNumismaticGrades(db);
   });
 
   // 3) Artık hiçbir parçaya ait olmayan eski fotoğrafları temizle

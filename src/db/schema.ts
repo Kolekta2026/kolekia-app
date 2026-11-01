@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { NUMISMATIC_UPGRADE } from '../constants/templates';
 
-export const DB_VERSION = 11;
+export const DB_VERSION = 12;
 
 export async function migrateDb(db: SQLiteDatabase) {
   // Yabancı anahtarlar her bağlantıda ayrıca açılmalı
@@ -207,6 +208,13 @@ export async function migrateDb(db: SQLiteDatabase) {
     version = 11;
   }
 
+  // v12 (1.8): madeni para ve banknot koleksiyonlarında kondisyon listesi koleksiyoncu dereceleriyle
+  // (Çil / UNC, Çil altı / AU …) değişir. Parçalara girilmiş eski değerler olduğu gibi kalır.
+  if (version < 12) {
+    await upgradeNumismaticGrades(db);
+    version = 12;
+  }
+
   await db.execAsync(`PRAGMA user_version = ${DB_VERSION}`);
 }
 
@@ -221,4 +229,29 @@ export async function seedValueHistory(db: SQLiteDatabase) {
       FROM items i
      WHERE i.estimated_value IS NOT NULL
        AND NOT EXISTS (SELECT 1 FROM value_history h WHERE h.item_id = i.id)`);
+}
+
+const sameList = (a: unknown, b: string[]) =>
+  Array.isArray(a) && a.length === b.length && a.every((x, i) => x === b[i]);
+
+// Eski genel kondisyon listesini (Mükemmel, Çok iyi …) hâlâ kullanan para/banknot alanlarını yeni
+// derecelerle değiştirir; kullanıcının kendi düzenlediği listelere dokunmaz. Yedekten dönüşte de çalışır.
+export async function upgradeNumismaticGrades(db: SQLiteDatabase) {
+  const rows = await db.getAllAsync<{ id: number; options: string | null; template: string }>(`
+    SELECT f.id, f.options, c.template FROM field_defs f
+      JOIN collections c ON c.id = f.collection_id
+     WHERE c.template IN ('coin', 'banknote') AND f.type = 'select'
+  `);
+  const U = NUMISMATIC_UPGRADE;
+  for (const r of rows) {
+    let opts: unknown;
+    try {
+      opts = r.options ? JSON.parse(r.options) : null;
+    } catch {
+      continue;
+    }
+    const target = r.template === 'coin' ? U.coin : U.banknote;
+    const next = sameList(opts, U.old.tr) ? target.tr : sameList(opts, U.old.en) ? target.en : null;
+    if (next) await db.runAsync('UPDATE field_defs SET options = ? WHERE id = ?', JSON.stringify(next), r.id);
+  }
 }

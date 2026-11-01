@@ -23,6 +23,7 @@ import { aiAvailable } from '../../../lib/gemini';
 import { daysUntil, formatDay } from '../../../lib/dates';
 import { ValueHistory } from '../../../components/ValueHistory';
 import { StoryShare } from '../../../components/StoryShare';
+import { CollageShare } from '../../../components/CollageShare';
 import { VideoBlock } from '../../../components/VideoBlock';
 
 type Item = {
@@ -65,6 +66,7 @@ export default function ItemScreen() {
   const [page, setPage] = useState(0);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [storyOpen, setStoryOpen] = useState(false);
+  const [collageOpen, setCollageOpen] = useState(false);
   const [video, setVideo] = useState<string | null>(null);
 
   // Düzenleme ekranından dönünce de yenilensin
@@ -103,10 +105,24 @@ export default function ItemScreen() {
     }, [db, id, reload])
   );
 
+  // Instagram düğmesi: birden çok fotoğraf varsa parça görseli mi kolaj mı, sorulur
+  function instaMenu() {
+    if (photos.length < 2) {
+      setStoryOpen(true);
+      return;
+    }
+    menu(t('story.title'), undefined, [
+      { text: t('story.single'), onPress: () => setStoryOpen(true) },
+      { text: t('collage.menuPhotos'), onPress: () => setCollageOpen(true) },
+      { text: t('common.cancel'), style: 'cancel' },
+    ]);
+  }
+
   // ⋯ menüsü: hikâyede paylaş, kopyala ve başka koleksiyona taşı
   function moreMenu() {
     menu(item!.title, undefined, [
       { text: t('story.title'), onPress: () => setStoryOpen(true) },
+      ...(photos.length > 1 ? [{ text: t('collage.menuPhotos'), onPress: () => setCollageOpen(true) }] : []),
       { text: t('item.duplicate'), onPress: duplicate },
       { text: t('item.move'), onPress: pickTarget },
     ]);
@@ -211,7 +227,7 @@ export default function ItemScreen() {
           title: '',
           headerRight: () => (
             <View style={s.headerActions}>
-              <Pressable hitSlop={12} accessibilityLabel={t('story.title')} onPress={() => setStoryOpen(true)}>
+              <Pressable hitSlop={12} accessibilityLabel={t('story.title')} onPress={instaMenu}>
                 <Ionicons name="logo-instagram" size={22} color={C.black} />
               </Pressable>
               <Pressable
@@ -395,6 +411,16 @@ export default function ItemScreen() {
           lines: details.map(d => ({ k: d.name, v: d.type === 'boolean' ? t('common.yes') : d.value! })),
         }}
       />
+
+      {collageOpen && (
+        <CollageShare
+          visible
+          unit="photo"
+          collection={item.title}
+          items={photos.map((uri, i) => ({ id: i, title: item.title, photo: uri }))}
+          onClose={() => setCollageOpen(false)}
+        />
+      )}
 
       <PhotoViewer
         photos={photos}

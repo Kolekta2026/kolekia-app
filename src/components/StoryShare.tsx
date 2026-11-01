@@ -68,8 +68,8 @@ export function StoryShare({ item, visible, onClose }: { item: StoryItem; visibl
   );
 
   // Hikâyede başlık en fazla 2, X'te 3 satır; etiketler ve değerler iki sütunda hizalı
-  const details = (base: number, maxLines: number, fitChars: number, top: number, inlineKicker = false) => {
-    const ts = fitTitle(item.title, base, fitChars);
+  const details = (base: number, maxLines: number, fitChars: number, top: number, width: number, inlineKicker = false) => {
+    const ts = fitTitle(item.title, base, fitChars, width);
     const lh = 17 * u;
     const lines = item.lines.slice(0, 3);
     return (
@@ -133,7 +133,7 @@ export function StoryShare({ item, visible, onClose }: { item: StoryItem; visibl
                 <View style={{ flex: 1, marginLeft: 24 * u }}>
                   <ShareBrand u={u} st={st} />
                   {kicker(26)}
-                  {details(26, 3, 42, 18)}
+                  {details(26, 3, 42, 18, 640 - 48 - 312 - 24)}
                   <View style={{ flex: 1 }} />
                   {footer}
                 </View>
@@ -142,7 +142,7 @@ export function StoryShare({ item, visible, onClose }: { item: StoryItem; visibl
               <>
                 <ShareBrand u={u} st={st} />
                 <View style={{ marginTop: 14 * u }}>{photo(w - 2 * STORY_SIDE * u)}</View>
-                {details(30, 2, 30, 12, true)}
+                {details(30, 2, 30, 12, 360 - 2 * STORY_SIDE, true)}
                 <View style={{ flex: 1 }} />
                 {footer}
               </>

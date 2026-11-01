@@ -39,10 +39,13 @@ function pickCols(n: number, W: number, H: number, gap: number) {
   return best;
 }
 
-// Koleksiyondan seçilen parçalarla tek görsellik kolaj: Instagram hikâyesi (9:16) ya da X gönderisi (16:9)
-export function CollageShare({ collection, items, visible, onClose }: {
+// Seçilen fotoğraflarla tek görsellik kolaj: Instagram hikâyesi (9:16) ya da X gönderisi (16:9).
+// unit = 'item': koleksiyondaki parçaların kapak fotoğrafları (başlık koleksiyon adı)
+// unit = 'photo': tek parçanın fotoğrafları (başlık parçanın adı; "Adlar" düğmesi gizli)
+export function CollageShare({ collection, items, visible, onClose, unit = 'item' }: {
   collection: string;
   items: CollageItem[];
+  unit?: 'item' | 'photo';
   visible: boolean;
   onClose: () => void;
 }) {
@@ -53,7 +56,9 @@ export function CollageShare({ collection, items, visible, onClose }: {
   const style = useShareStyle(visible);
   const { st } = style;
   const [format, setFormat] = useState<Format>('story');
+  const isPhotos = unit === 'photo';
   const [names, setNames] = useState(false);
+  const countText = (n: number) => t(isPhotos ? 'collage.photos' : 'collage.count', { n });
   const [busy, setBusy] = useState(false);
   // Açılışta fotoğraflı ilk 6 parça seçili gelir; önizleme hemen dolu görünür.
   // (Ekran her açılışta yeniden oluşturulur, seçim yalnızca ilk açılışta hazırlanır.)
@@ -92,7 +97,7 @@ export function CollageShare({ collection, items, visible, onClose }: {
   }
 
   const gap = 6 * u;
-  const sub = `${t('story.kicker')} · ${t('collage.count', { n: chosen.length })}`;
+  const sub = `${t('story.kicker')} · ${countText(chosen.length)}`;
 
   // Hikâyede başlık ve alt yazıdan sonra kalan alan, X'te sağ taraf (sütun sayısı seçimi için yaklaşık ölçü)
   const area = isX
@@ -108,14 +113,14 @@ export function CollageShare({ collection, items, visible, onClose }: {
         <View style={{ flex: 1, borderWidth: 2 * u, borderColor: st.ink, borderStyle: 'dashed', opacity: 0.4 }} />
       ) : rows.map((row, r) => (
         <View key={r} style={{ flex: 1, flexDirection: 'row', gap }}>
-          {row.map(it => <Cell key={it.id} item={it} u={u} st={st} names={names} />)}
+          {row.map(it => <Cell key={it.id} item={it} u={u} st={st} names={names && !isPhotos} />)}
         </View>
       ))}
     </View>
   );
 
-  const title = (base: number, lines: number, fit: number, top: number) => {
-    const ts = fitTitle(collection, base, fit);
+  const title = (base: number, lines: number, fit: number, top: number, width: number) => {
+    const ts = fitTitle(collection, base, fit, width);
     return (
       <>
         <Text
@@ -124,9 +129,21 @@ export function CollageShare({ collection, items, visible, onClose }: {
         >
           {collection}
         </Text>
-        <Text numberOfLines={1} style={{ fontFamily: F.semi, fontSize: 14 * u, color: st.ink, opacity: 0.7, marginTop: 6 * u }}>
-          {sub}
-        </Text>
+        {/* X'te sol sütun dar: "Koleksiyonumdan" ve parça sayısı alt alta */}
+        {isX ? (
+          <>
+            <Text numberOfLines={1} style={{ fontFamily: F.semi, fontSize: 14 * u, color: st.ink, opacity: 0.7, marginTop: 8 * u }}>
+              {t('story.kicker')}
+            </Text>
+            <Text numberOfLines={1} style={{ fontFamily: F.semi, fontSize: 14 * u, color: st.ink, opacity: 0.7, marginTop: 2 * u }}>
+              {countText(chosen.length)}
+            </Text>
+          </>
+        ) : (
+          <Text numberOfLines={1} style={{ fontFamily: F.semi, fontSize: 14 * u, color: st.ink, opacity: 0.7, marginTop: 6 * u }}>
+            {sub}
+          </Text>
+        )}
       </>
     );
   };
@@ -158,7 +175,7 @@ export function CollageShare({ collection, items, visible, onClose }: {
               <>
                 <View style={{ width: 190 * u }}>
                   <ShareBrand u={u} st={st} />
-                  {title(28, 3, 36, 26)}
+                  {title(28, 3, 36, 26, 190)}
                   <View style={{ flex: 1 }} />
                   {footer}
                 </View>
@@ -167,7 +184,7 @@ export function CollageShare({ collection, items, visible, onClose }: {
             ) : (
               <>
                 <ShareBrand u={u} st={st} />
-                {title(30, 1, 18, 12)}
+                {title(30, 2, 28, 12, 360 - 2 * STORY_SIDE)}
                 <View style={{ flex: 1, marginTop: 14 * u }}>{grid}</View>
                 {footer}
               </>
@@ -177,7 +194,8 @@ export function CollageShare({ collection, items, visible, onClose }: {
 
         {/* Parça seçimi: dokunulan sırayla kolaja girer */}
         <View style={s.stripHead}>
-          <Text style={s.stripLabel}>{t('collage.pick')} · {chosen.length}/{MAX}</Text>
+          <Text style={s.stripLabel}>{t(isPhotos ? 'collage.pickPhotos' : 'collage.pick')} · {chosen.length}/{MAX}</Text>
+          {isPhotos ? <View style={{ height: 26 }} /> : (
           <Pressable
             onPress={() => setNames(v => !v)}
             hitSlop={8}
@@ -187,6 +205,7 @@ export function CollageShare({ collection, items, visible, onClose }: {
             <Text style={[s.namesText, names && { color: '#000000' }]}>Aa</Text>
             <Text style={[s.namesText, names && { color: '#000000' }]}>{t('home.titles')}</Text>
           </Pressable>
+          )}
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.stripWrap} contentContainerStyle={s.strip}>
           {items.map(it => {

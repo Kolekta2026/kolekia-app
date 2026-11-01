@@ -1022,7 +1022,9 @@ function FieldInput({ def, value, onChange, t }: {
   const { C } = useTheme();
   const s = useStyles(makeStyles);
   if (def.type === 'select') {
-    const opts: string[] = def.options ? JSON.parse(def.options) : [];
+    const listed: string[] = def.options ? JSON.parse(def.options) : [];
+    // Listede olmayan eski bir değer (ör. kondisyon listesi değişmeden önce seçilmiş) kaybolmasın
+    const opts = value && !listed.includes(value) ? [...listed, value] : listed;
     return (
       <Chips
         options={opts.map(o => ({ key: o, label: o }))}

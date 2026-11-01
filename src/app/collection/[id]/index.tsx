@@ -186,6 +186,11 @@ export default function CollectionScreen() {
           title: '',
           headerRight: () => (
             <View style={s.headerActions}>
+              {items.length > 0 && (
+                <Pressable hitSlop={12} accessibilityLabel={t('collage.menu')} onPress={() => setCollageOpen(true)}>
+                  <Ionicons name="logo-instagram" size={22} color={C.black} />
+                </Pressable>
+              )}
               <Pressable
                 hitSlop={12}
                 accessibilityLabel={t('share.title')}

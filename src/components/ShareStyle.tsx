@@ -185,10 +185,17 @@ export function ShareBrand({ u, st }: { u: number; st: Swatch }) {
   );
 }
 
-// Başlık yazı boyutu uzunluğa göre küçülür; satır aralığı da yazıyla birlikte küçülür
-export function fitTitle(text: string, base: number, fitChars: number) {
+// Başlık yazı boyutu uzunluğa göre küçülür; satır aralığı da yazıyla birlikte küçülür.
+// width verilirse en uzun kelime tek satıra sığacak kadar küçülür ("Formalarım" ikiye bölünmesin).
+// Kalın yazı tipinde bir harf ortalama ~0.72 yazı boyutu genişliğinde.
+export function fitTitle(text: string, base: number, fitChars: number, width?: number) {
   const n = text.length;
-  return n <= fitChars ? base : Math.max(base * 0.62, (base * fitChars) / n);
+  let size = n <= fitChars ? base : Math.max(base * 0.62, (base * fitChars) / n);
+  if (width) {
+    const longest = Math.max(1, ...text.split(/\s+/).map(w => w.length));
+    size = Math.min(size, width / (0.72 * longest));
+  }
+  return size;
 }
 
 // Paylaşım ekranlarının (koyu zeminli tam ekran) ortak stilleri

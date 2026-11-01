@@ -17,6 +17,30 @@ const CONDITION = [
   l('Orta', 'Fair'),
   l('Yıpranmış', 'Worn'),
 ];
+// Para koleksiyoncularının kullandığı kondisyon dereceleri (en iyiden en yıpranmışa).
+// Parantez içi uluslararası kısaltma; katalog ve müzayedelerde bu kısaltmalarla aranır.
+const COIN_GRADES = [
+  l('Proof (PR)', 'Proof (PR)'),
+  l('Çil (UNC)', 'Uncirculated (UNC)'),
+  l('Çil altı (AU)', 'About Uncirculated (AU)'),
+  l('Çok çok temiz (XF)', 'Extremely Fine (XF)'),
+  l('Çok temiz (VF)', 'Very Fine (VF)'),
+  l('Temiz (F)', 'Fine (F)'),
+  l('Orta (VG)', 'Very Good (VG)'),
+  l('Yıpranmış (G)', 'Good (G)'),
+];
+const NOTE_GRADES = COIN_GRADES.slice(1); // banknotta "Proof" yok
+const GRADE_FIELD = (options: L[]) => ({ name: l('Kondisyon', 'Condition'), type: 'select' as const, options });
+// NGC, PCGS gibi kurumların verdiği sertifikalı not (ör. "MS 64", "PMG 65 EPQ")
+const CERT_FIELD = { name: l('Sertifika notu', 'Certified grade'), type: 'text' as const };
+
+// v12 göçünde eski genel kondisyon listesini para/banknot dereceleriyle değiştirmek için
+export const NUMISMATIC_UPGRADE = {
+  old: { tr: CONDITION.map(o => o.tr), en: CONDITION.map(o => o.en) },
+  coin: { tr: COIN_GRADES.map(o => o.tr), en: COIN_GRADES.map(o => o.en) },
+  banknote: { tr: NOTE_GRADES.map(o => o.tr), en: NOTE_GRADES.map(o => o.en) },
+};
+
 const YEAR = { name: l('Yıl', 'Year'), type: 'number' as const };
 const COUNTRY = { name: l('Ülke', 'Country'), type: 'text' as const };
 const CONDITION_FIELD = { name: l('Kondisyon', 'Condition'), type: 'select' as const, options: CONDITION };
@@ -43,7 +67,7 @@ const RAW: RawTemplate[] = [
   },
   {
     key: 'coin', label: l('Madeni para', 'Coin'),
-    fields: [COUNTRY, YEAR, { name: l('Değer', 'Denomination'), type: 'text' }, CONDITION_FIELD],
+    fields: [COUNTRY, YEAR, { name: l('Değer', 'Denomination'), type: 'text' }, GRADE_FIELD(COIN_GRADES), CERT_FIELD],
   },
   {
     key: 'stamp', label: l('Pul', 'Stamp'),
@@ -274,7 +298,7 @@ const RAW: RawTemplate[] = [
   },
   {
     key: 'banknote', label: l('Banknot', 'Banknote'),
-    fields: [COUNTRY, YEAR, { name: l('Değer', 'Denomination'), type: 'text' }, { name: l('Seri no', 'Serial no.'), type: 'text' }, CONDITION_FIELD],
+    fields: [COUNTRY, YEAR, { name: l('Değer', 'Denomination'), type: 'text' }, { name: l('Seri no', 'Serial no.'), type: 'text' }, GRADE_FIELD(NOTE_GRADES), CERT_FIELD],
   },
   {
     key: 'comic', label: l('Çizgi roman', 'Comic'),
