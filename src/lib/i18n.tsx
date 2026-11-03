@@ -78,7 +78,8 @@ const tr = {
   'story.single': 'Parça görseli',
   'story.custom': 'Kendi renklerin',
   'story.bg': 'Zemin',
-  'story.ink': 'Yazı',
+  'story.ink': 'Kenar',
+  'story.accent': 'Vurgu',
   'story.fmtX': 'X gönderisi',
   'story.hintX': 'Paylaşım menüsünden X\'i seç, görsel gönderine eklenir. Fiyat bilgileri görsele konmaz.',
 
@@ -560,7 +561,8 @@ const en: Record<Key, Entry> = {
   'story.single': 'Item card',
   'story.custom': 'Your own colours',
   'story.bg': 'Background',
-  'story.ink': 'Text',
+  'story.ink': 'Frame',
+  'story.accent': 'Accent',
   'story.fmtX': 'X post',
   'story.hintX': 'Pick X in the share menu and the image is added to your post. Prices are never added to the image.',
 

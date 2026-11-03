@@ -53,7 +53,9 @@ export function previewSize(format: Format, screenW: number, avail: number) {
 
 // Kullanıcının kendi seçtiği zemin/yazı rengi; ayarlarda saklanır, bir sonraki paylaşımda hatırlanır
 const CUSTOM_KEY = 'story_custom';
-const DEFAULT_CUSTOM: [string, string] = ['#0B2A5B', '#FDB913'];
+// Zemin, kenar/yazı, vurgu (ince hat ve alt yazı)
+type Custom = [string, string, string];
+const DEFAULT_CUSTOM: Custom = ['#0B2A5B', '#FDB913', '#FFFFFF'];
 const isHex = (x: string) => /^#[0-9A-F]{6}$/i.test(x);
 
 // Fotoğraf hazırlanırken gösterilen geçici renkler
@@ -78,8 +80,8 @@ export function useShareStyle(visible: boolean, photo?: string | null) {
     return () => { alive = false; };
   }, [visible, photo]);
   const [styleIdx, setStyleIdx] = useState(0);
-  const [custom, setCustom] = useState<[string, string]>(DEFAULT_CUSTOM);
-  const [slotPick, setSlotPick] = useState<0 | 1>(0);
+  const [custom, setCustom] = useState<Custom>(DEFAULT_CUSTOM);
+  const [slotPick, setSlotPick] = useState<0 | 1 | 2>(0);
   const customIdx = swatches.length; // listenin sonundaki "kendi renklerin" kutusu
   const customOn = styleIdx === customIdx;
 
@@ -87,21 +89,22 @@ export function useShareStyle(visible: boolean, photo?: string | null) {
     if (!visible) return;
     db.getFirstAsync<{ value: string }>('SELECT value FROM settings WHERE key = ?', CUSTOM_KEY)
       .then(r => {
-        const [bg, ink] = (r?.value ?? '').split(',');
-        if (bg && ink && isHex(bg) && isHex(ink)) setCustom([bg, ink]);
+        // Eski kayıtlarda iki renk var: vurgu kenar rengiyle aynı başlar
+        const [bg, ink, accent] = (r?.value ?? '').split(',');
+        if (bg && ink && isHex(bg) && isHex(ink)) setCustom([bg, ink, accent && isHex(accent) ? accent : ink]);
       })
       .catch(() => {});
   }, [visible, db]);
 
-  function saveCustom(next: [string, string]) {
+  function saveCustom(next: Custom) {
     setCustom(next);
     db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', CUSTOM_KEY, next.join(',')).catch(() => {});
   }
 
-  const sw = customOn ? { bg: custom[0], ink: custom[1] } : swatches[Math.min(styleIdx, swatches.length - 1)];
+  const sw = customOn ? { bg: custom[0], ink: custom[1], accent: custom[2] } : swatches[Math.min(styleIdx, swatches.length - 1)];
   return {
     swatches, styleIdx, setStyleIdx, custom, customOn, customIdx, slotPick, setSlotPick, saveCustom,
-    pickColor: (c: string) => saveCustom(slotPick === 0 ? [c, custom[1]] : [custom[0], c]),
+    pickColor: (c: string) => saveCustom(custom.map((x, i) => (i === slotPick ? c : x)) as Custom),
     // Vurgu zeminde okunmuyorsa (ör. tema rengi zemine çok yakınsa) kenar rengi kullanılır
     st: { bg: sw.bg, ink: sw.ink, accent: sw.accent && contrast(sw.accent, sw.bg) >= 2.5 ? sw.accent : sw.ink },
     hasPhoto,
@@ -158,7 +161,7 @@ export function StylePicker({ style }: { style: ShareStyleState }) {
           style={[s.swatch, { backgroundColor: custom[0] }, customOn && s.swatchOn]}
           accessibilityLabel={t('story.custom')}
         >
-          <View style={{ width: 16, height: 16, backgroundColor: custom[1] }} />
+          <View style={{ width: 16, height: 16, backgroundColor: custom[1], borderWidth: 3, borderColor: custom[2] }} />
           <View style={s.editBadge}>
             <Ionicons name="color-palette" size={11} color="#000000" />
           </View>
@@ -168,7 +171,7 @@ export function StylePicker({ style }: { style: ShareStyleState }) {
       {customOn && (
         <View style={s.customPanel}>
           <View style={s.slotRow}>
-            {([0, 1] as const).map(i => (
+            {([0, 1, 2] as const).map(i => (
               <Pressable
                 key={i}
                 onPress={() => setSlotPick(i)}
@@ -176,10 +179,10 @@ export function StylePicker({ style }: { style: ShareStyleState }) {
                 accessibilityState={{ selected: slotPick === i }}
               >
                 <View style={[s.slotChip, { backgroundColor: custom[i] }]} />
-                <Text style={[s.slotText, slotPick === i && { color: '#FFFFFF' }]}>{t(i === 0 ? 'story.bg' : 'story.ink')}</Text>
+                <Text style={[s.slotText, slotPick === i && { color: '#FFFFFF' }]}>{t(i === 0 ? 'story.bg' : i === 1 ? 'story.ink' : 'story.accent')}</Text>
               </Pressable>
             ))}
-            <Pressable onPress={() => saveCustom([custom[1], custom[0]])} hitSlop={8} style={s.swapBtn} accessibilityLabel={t('custom.swap')}>
+            <Pressable onPress={() => saveCustom([custom[1], custom[0], custom[2]])} hitSlop={8} style={s.swapBtn} accessibilityLabel={t('custom.swap')}>
               <Ionicons name="swap-horizontal" size={22} color="#FFFFFF" />
             </Pressable>
           </View>
@@ -193,7 +196,7 @@ export function StylePicker({ style }: { style: ShareStyleState }) {
               );
             })}
           </ScrollView>
-          {contrast(custom[0], custom[1]) < 2 && <Text style={s.weak}>{t('custom.weak')}</Text>}
+          {(contrast(custom[0], custom[1]) < 2 || contrast(custom[0], custom[2]) < 2) && <Text style={s.weak}>{t('custom.weak')}</Text>}
         </View>
       )}
     </>
@@ -357,7 +360,7 @@ const s = StyleSheet.create({
   shapeOn: { borderColor: '#FFFFFF', backgroundColor: '#2E2E2E' },
   slotRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   slot: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, height: 38, paddingHorizontal: 10,
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, height: 38, paddingHorizontal: 8,
     borderWidth: 1, borderColor: '#444444',
   },
   slotOn: { borderColor: '#FFFFFF' },
