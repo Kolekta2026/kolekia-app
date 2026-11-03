@@ -105,8 +105,14 @@ export function useShareStyle(visible: boolean, photo?: string | null) {
   return {
     swatches, styleIdx, setStyleIdx, custom, customOn, customIdx, slotPick, setSlotPick, saveCustom,
     pickColor: (c: string) => saveCustom(custom.map((x, i) => (i === slotPick ? c : x)) as Custom),
-    // Vurgu zeminde okunmuyorsa (ör. tema rengi zemine çok yakınsa) kenar rengi kullanılır
-    st: { bg: sw.bg, ink: sw.ink, accent: sw.accent && contrast(sw.accent, sw.bg) >= 2.5 ? sw.accent : sw.ink },
+    // accent: çerçevedeki ince hat (kenar ile fotoğraf arasında; zeminle yan yana gelmez, her zaman kullanılır)
+    // accentText: alt yazı; vurgu zeminde okunmuyorsa yazıda kenar rengi kullanılır
+    st: {
+      bg: sw.bg,
+      ink: sw.ink,
+      accent: sw.accent ?? sw.ink,
+      accentText: sw.accent && contrast(sw.accent, sw.bg) >= 2.5 ? sw.accent : sw.ink,
+    },
     hasPhoto,
   };
 }

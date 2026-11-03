@@ -69,7 +69,7 @@ export function StoryShare({ item, visible, onClose, photos = [], startIndex = 0
   }
 
   const kicker = (top: number) => (
-    <Text style={{ fontFamily: F.bold, fontSize: 13 * u, color: st.accent, opacity: st.accent === st.ink ? 0.7 : 1, marginTop: top * u }}>
+    <Text style={{ fontFamily: F.bold, fontSize: 13 * u, color: st.accentText, opacity: st.accentText === st.ink ? 0.7 : 1, marginTop: top * u }}>
       {t('story.kicker')}
     </Text>
   );
@@ -91,7 +91,7 @@ export function StoryShare({ item, visible, onClose, photos = [], startIndex = 0
         >
           {item.title}
         </Text>
-        <Text numberOfLines={1} style={{ fontFamily: F.semi, fontSize: 14 * u, color: st.accent, opacity: st.accent === st.ink ? 0.7 : 1, marginTop: 6 * u }}>
+        <Text numberOfLines={1} style={{ fontFamily: F.semi, fontSize: 14 * u, color: st.accentText, opacity: st.accentText === st.ink ? 0.7 : 1, marginTop: 6 * u }}>
           {inlineKicker ? `${t('story.kicker')} · ${item.collection}` : item.collection}
         </Text>
         {lines.length > 0 && (
