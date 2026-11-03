@@ -2,7 +2,8 @@
   "expo": {
     "name": "Kolekia",
     "slug": "kolekta",
-    "version": "1.8.0",
+    "version": "1.8.1",
+    "runtimeVersion": "1.8.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "kolekta",
@@ -101,9 +102,9 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Kolekta needs access to your photos to add pictures to your items.",
-          "cameraPermission": "Kolekta needs camera access to photograph your items.",
-          "microphonePermission": false
+          "photosPermission": "Kolekia needs access to your photos to add pictures and videos to your items.",
+          "cameraPermission": "Kolekia needs camera access to photograph and film your items.",
+          "microphonePermission": "Kolekia needs microphone access to record sound in videos of your items."
         }
       ],
       [
@@ -132,9 +133,6 @@
       "eas": {
         "projectId": "a436ea19-f43b-43fb-83c3-7b71a3cc3d76"
       }
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
     },
     "updates": {
       "url": "https://u.expo.dev/a436ea19-f43b-43fb-83c3-7b71a3cc3d76"
