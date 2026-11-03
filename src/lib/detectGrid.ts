@@ -31,6 +31,13 @@ function spreadOf(P: Float32Array) {
   return Math.max(1, quantile(P, 0.9) - quantile(P, 0.1));
 }
 
+function invert(P: Float32Array) {
+  const hi = quantile(P, 0.98);
+  const out = new Float32Array(P.length);
+  for (let i = 0; i < P.length; i++) out[i] = Math.max(0, hi - P[i]);
+  return out;
+}
+
 function smooth(p: Float32Array, r: number) {
   const n = p.length;
   const out = new Float32Array(n);
@@ -244,19 +251,30 @@ export function detectGrid(
   }
 
   const rs = Math.max(1, Math.round(Math.min(w, h) / 120));
-  const rowFit = bestFit(smooth(roughness(img, w, 0, w, 0, h, false), rs), 2, MAX_N);
+  const rowP = smooth(roughness(img, w, 0, w, 0, h, false), rs);
+  const rowFit = bestFit(rowP, 2, MAX_N);
+  // Bazı kutularda tersi geçerli: bölme duvarları dokulu köpük, bölmelerin içi düz kadife.
+  // O zaman bölme çizgileri profilin tepelerinde durur; ters profille de aranır.
+  const rowInv = invert(rowP);
+  const rowFitInv = bestFit(rowInv, 2, MAX_N);
 
   // Satır bantları; tek sıra dizilmiş parçalar için tüm yükseklik de denenir
-  const candidates: [number, number][][] = [];
-  if (rowFit.score > -9) {
+  const candidates: { bands: [number, number][]; rowScore: number }[] = [];
+  // Ters profil yalnızca düz profilin kaçırdığı bölmeleri buluyorsa (bir satır fazla ve daha iyi
+  // puan) aday olur. Sıradan kutularda ters profil hücre ortalarını bölme sanıp satırları
+  // birleştirmeye eğilimli; bu koşul onu eler.
+  const useInv = rowFitInv.score > rowFit.score && rowFitInv.n === rowFit.n + 1;
+  for (const f of useInv ? [rowFit, rowFitInv] : [rowFit]) {
+    if (f.score <= -9) continue;
     const bands: [number, number][] = [];
-    for (let k = 0; k < rowFit.n; k++) bands.push([rowFit.b[k], rowFit.b[k + 1]]);
-    candidates.push(bands);
+    for (let k = 0; k < f.n; k++) bands.push([f.b[k], f.b[k + 1]]);
+    candidates.push({ bands, rowScore: f.score });
   }
-  candidates.push([[0, h]]);
+  candidates.push({ bands: [[0, h]], rowScore: 0.5 });
 
   let best: { bands: [number, number][]; cols: ReturnType<typeof columnsFor>; total: number } | null = null;
-  for (let bands of candidates) {
+  for (const cand of candidates) {
+    let bands = cand.bands;
     let cols = columnsFor(img, w, bands);
     // Uçtaki bir satır ızgaraya uymuyorsa (ör. açık cam kapak, masa) atılır:
     // ya puanı çok düşüktür ya da hem puanı zayıf hem de neredeyse boştur
@@ -274,7 +292,7 @@ export function detectGrid(
       cols = columnsFor(img, w, bands);
     }
     if (cols.n === 0) continue;
-    const rowScore = bands.length > 1 ? rowFit.score : 0.5;
+    const rowScore = bands.length === cand.bands.length ? cand.rowScore : bands.length > 1 ? rowFit.score : 0.5;
     const total = (cols.score + rowScore) / 2;
     if (!best || total > best.total) best = { bands, cols, total };
   }

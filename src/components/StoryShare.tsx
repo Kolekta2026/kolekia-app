@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSQLiteContext } from 'expo-sqlite';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,8 +8,8 @@ import { F } from '../constants/theme';
 import { useI18n } from '../lib/i18n';
 import { shareUri } from '../lib/share';
 import {
-  CUSTOM_PANEL_H, fitTitle, Format, FormatToggle, OUT, previewSize, ShareBrand, shareScreen as s,
-  STORY_PAD, STORY_SIDE, StylePicker, useShareStyle,
+  CUSTOM_PANEL_H, fitTitle, Format, FormatToggle, FramedPhoto, OUT, previewSize, ShareBrand, shareScreen as s,
+  Shape, ShapePicker, SHAPES, STORY_PAD, STORY_SIDE, StylePicker, useShareStyle,
 } from './ShareStyle';
 
 export type StoryItem = {
@@ -20,18 +21,38 @@ export type StoryItem = {
 
 // Parçadan paylaşım görseli: önce önizleme, sonra sistem paylaşım menüsü
 // (Instagram'da "Hikâye" seçilince doğrudan hikâye ekranı açılır; X'te görsel gönderiye eklenir)
-export function StoryShare({ item, visible, onClose }: { item: StoryItem; visible: boolean; onClose: () => void }) {
+// photos: parçanın bütün fotoğrafları; birden çoksa paylaşılacak fotoğraf alttaki şeritten seçilir
+export function StoryShare({ item, visible, onClose, photos = [], startIndex = 0 }: {
+  item: StoryItem; visible: boolean; onClose: () => void; photos?: string[]; startIndex?: number;
+}) {
+  const [photoIdx, setPhotoIdx] = useState(startIndex);
+  useEffect(() => { if (visible) setPhotoIdx(startIndex); }, [visible, startIndex]);
+  const shown = photos.length ? photos[Math.min(photoIdx, photos.length - 1)] : item.photo;
+  const multi = photos.length > 1;
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const ref = useRef<View>(null);
-  const style = useShareStyle(visible);
+  const db = useSQLiteContext();
+  const style = useShareStyle(visible, shown);
   const { st } = style;
+  // Fotoğraf penceresinin şekli; seçim hatırlanır
+  const [shape, setShape] = useState<Shape>('square');
+  useEffect(() => {
+    if (!visible) return;
+    db.getFirstAsync<{ value: string }>("SELECT value FROM settings WHERE key = 'story_shape'")
+      .then(r => { if (r && (SHAPES as string[]).includes(r.value)) setShape(r.value as Shape); })
+      .catch(() => {});
+  }, [visible, db]);
+  function pickShape(sh: Shape) {
+    setShape(sh);
+    db.runAsync("INSERT OR REPLACE INTO settings (key, value) VALUES ('story_shape', ?)", sh).catch(() => {});
+  }
   const [format, setFormat] = useState<Format>('story');
   const [busy, setBusy] = useState(false);
 
   const isX = format === 'x';
-  const avail = height - insets.top - insets.bottom - 248 - (style.customOn ? CUSTOM_PANEL_H : 0);
+  const avail = height - insets.top - insets.bottom - 298 - (style.customOn ? CUSTOM_PANEL_H : 0) - (multi ? 62 : 0);
   const { w, h, u } = previewSize(format, width, avail);
 
   async function share() {
@@ -48,23 +69,13 @@ export function StoryShare({ item, visible, onClose }: { item: StoryItem; visibl
   }
 
   const kicker = (top: number) => (
-    <Text style={{ fontFamily: F.bold, fontSize: 13 * u, color: st.ink, opacity: 0.7, marginTop: top * u }}>
+    <Text style={{ fontFamily: F.bold, fontSize: 13 * u, color: st.accent, opacity: st.accent === st.ink ? 0.7 : 1, marginTop: top * u }}>
       {t('story.kicker')}
     </Text>
   );
 
   const photo = (size: number) => (
-    <View style={{ width: size, height: size, borderWidth: 6 * u, borderColor: st.ink, backgroundColor: st.ink }}>
-      {item.photo ? (
-        <Image source={{ uri: item.photo }} style={{ flex: 1 }} />
-      ) : (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontFamily: F.black, fontSize: size * 0.38, color: st.bg, opacity: 0.25 }}>
-            {item.title.charAt(0).toLocaleUpperCase('tr')}
-          </Text>
-        </View>
-      )}
-    </View>
+    <FramedPhoto uri={shown} letter={item.title.charAt(0).toLocaleUpperCase('tr')} size={size} u={u} st={st} shape={shape} />
   );
 
   // Hikâyede başlık en fazla 2, X'te 3 satır; etiketler ve değerler iki sütunda hizalı
@@ -80,7 +91,7 @@ export function StoryShare({ item, visible, onClose }: { item: StoryItem; visibl
         >
           {item.title}
         </Text>
-        <Text numberOfLines={1} style={{ fontFamily: F.semi, fontSize: 14 * u, color: st.ink, opacity: 0.7, marginTop: 6 * u }}>
+        <Text numberOfLines={1} style={{ fontFamily: F.semi, fontSize: 14 * u, color: st.accent, opacity: st.accent === st.ink ? 0.7 : 1, marginTop: 6 * u }}>
           {inlineKicker ? `${t('story.kicker')} · ${item.collection}` : item.collection}
         </Text>
         {lines.length > 0 && (
@@ -150,6 +161,22 @@ export function StoryShare({ item, visible, onClose }: { item: StoryItem; visibl
           </View>
         </View>
 
+        {multi && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={ps.wrap} contentContainerStyle={ps.strip}>
+            {photos.map((p, i) => (
+              <Pressable
+                key={`${p}-${i}`}
+                onPress={() => setPhotoIdx(i)}
+                style={[ps.thumb, i === photoIdx && ps.thumbOn]}
+                accessibilityLabel={`${t('story.photo')} ${i + 1}`}
+                accessibilityState={{ selected: i === photoIdx }}
+              >
+                <Image source={{ uri: p }} style={{ width: '100%', height: '100%' }} />
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
+        <ShapePicker value={shape} onChange={pickShape} />
         <StylePicker style={style} />
 
         <Pressable onPress={share} disabled={busy} style={({ pressed }) => [s.button, pressed && { opacity: 0.85 }]}>
@@ -165,3 +192,10 @@ export function StoryShare({ item, visible, onClose }: { item: StoryItem; visibl
     </Modal>
   );
 }
+
+const ps = StyleSheet.create({
+  wrap: { flexGrow: 0, marginHorizontal: -20, marginBottom: 10 },
+  strip: { flexDirection: 'row', gap: 8, paddingHorizontal: 20 },
+  thumb: { width: 48, height: 48, borderWidth: 2, borderColor: 'transparent', opacity: 0.55, overflow: 'hidden' },
+  thumbOn: { borderColor: '#FFFFFF', opacity: 1 },
+});

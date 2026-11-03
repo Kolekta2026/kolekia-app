@@ -404,6 +404,9 @@ export default function ItemScreen() {
       <StoryShare
         visible={storyOpen}
         onClose={() => setStoryOpen(false)}
+        // Galeride o an bakılan fotoğraf seçili gelir, diğerleri alttaki şeritten seçilebilir
+        photos={photos}
+        startIndex={page}
         item={{
           title: item.title,
           collection: item.collection_name,

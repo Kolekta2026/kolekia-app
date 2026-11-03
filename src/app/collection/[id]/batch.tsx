@@ -60,6 +60,10 @@ export default function BatchAddScreen() {
   const [detecting, setDetecting] = useState(false);
   const [detected, setDetected] = useState(false);
   const [foundGrid, setFoundGrid] = useState<{ rows: number; cols: number } | null>(null);
+  // Otomatik bulun arayacağı bölge: yalnızca kullanıcının Izgara sekmesinde elle çizdiği çerçeve.
+  // (Bulunan düzen çerçeveyi kendine oturtur; "Yeniden bul" o daralmış çerçevede arasaydı her
+  // denemede alan biraz daha küçülürdü.) null = fotoğrafın tamamı.
+  const userFrame = useRef<Frame | null>(null);
 
   useEffect(() => {
     db.getFirstAsync<{ name: string }>('SELECT name FROM collections WHERE id = ?', collectionId)
@@ -134,6 +138,7 @@ export default function BatchAddScreen() {
     const saved = await img.saveAsync({ format: SaveFormat.JPEG, compress: 0.92 });
     setPhoto({ uri: saved.uri, width: saved.width, height: saved.height });
     setFrame({ l: 0.04, t: 0.04, r: 0.96, b: 0.96 });
+    userFrame.current = null;
     setBoxes([]);
     setSelected(null);
     setDetected(false);
@@ -184,6 +189,7 @@ export default function BatchAddScreen() {
               else f.r = clamp(start.r + dx, start.l + MIN_SIZE, 1);
               if (corner === 'tl' || corner === 'tr') f.t = clamp(start.t + dy, 0, start.b - MIN_SIZE);
               else f.b = clamp(start.b + dy, start.t + MIN_SIZE, 1);
+              userFrame.current = f;
               setFrame(f);
             },
           }),
@@ -211,8 +217,8 @@ export default function BatchAddScreen() {
     setSelected(null);
     setDetecting(true);
     try {
-      // Izgara sekmesinde çerçeve daraltıldıysa yalnızca o bölgede aranır
-      const found = await detectInPhoto(photo.uri, photo.width, photo.height, frameRef.current);
+      // Izgara sekmesinde çerçeve elle daraltıldıysa yalnızca o bölgede aranır
+      const found = await detectInPhoto(photo.uri, photo.width, photo.height, userFrame.current ?? undefined);
       applyDetection(found);
       if (found.boxes.length === 0) Alert.alert(t('batch.autoTitle'), t('batch.autoNone'));
     } catch (e) {
