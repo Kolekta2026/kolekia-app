@@ -111,6 +111,26 @@ export function paletteFromPixels(rgba: Uint8Array, w: number, h: number): Photo
   return { bg: hslToHex(bg), ink: hslToHex(ink), accent: hslToHex(accent) };
 }
 
+function hexToHsl(hex: string): HSL {
+  const n = parseInt(hex.slice(1), 16);
+  return rgbToHsl((n >> 16) & 255, (n >> 8) & 255, n & 255);
+}
+
+// "Kendi renklerin" paletinin başına konan tonlar: fotoğrafın üç rengi ve her birinin
+// bir açık, bir koyu hâli. Parçanın renklerini koruyarak ince ayar yapılabilsin diye.
+export function photoShades(p: PhotoPalette): string[] {
+  const out: string[] = [];
+  const add = (c: HSL) => {
+    const hex = hslToHex(c);
+    if (!out.includes(hex)) out.push(hex);
+  };
+  const bg = hexToHsl(p.bg), ink = hexToHsl(p.ink), ac = hexToHsl(p.accent);
+  add(bg); add({ ...bg, l: 0.2 }); add({ ...bg, l: 0.32 });
+  add(ink); add({ ...ink, l: 0.97 }); add({ ...ink, l: 0.72 });
+  add(ac); add({ ...ac, l: 0.5 }); add({ ...ac, l: 0.84 });
+  return out;
+}
+
 export async function photoPalette(uri: string): Promise<PhotoPalette | null> {
   const img = await ImageManipulator.manipulate(uri).resize({ width: 96 }).renderAsync();
   const res = await img.saveAsync({ format: SaveFormat.JPEG, compress: 0.9, base64: true });

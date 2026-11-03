@@ -68,7 +68,7 @@ export function CollageShare({ collection, items, visible, onClose, unit = 'item
   });
 
   const isX = format === 'x';
-  const avail = height - insets.top - insets.bottom - 248 - STRIP_H - (style.customOn ? CUSTOM_PANEL_H : 0);
+  const avail = height - insets.top - insets.bottom - 248 - STRIP_H - (style.panelOpen ? CUSTOM_PANEL_H : 0);
   const { w, h, u } = previewSize(format, width, avail);
   const chosen = picked.map(id => items.find(i => i.id === id)).filter((x): x is CollageItem => !!x);
 

@@ -52,7 +52,7 @@ export function StoryShare({ item, visible, onClose, photos = [], startIndex = 0
   const [busy, setBusy] = useState(false);
 
   const isX = format === 'x';
-  const avail = height - insets.top - insets.bottom - 298 - (style.customOn ? CUSTOM_PANEL_H : 0) - (multi ? 62 : 0);
+  const avail = height - insets.top - insets.bottom - 298 - (style.panelOpen ? CUSTOM_PANEL_H : 0) - (multi ? 62 : 0);
   const { w, h, u } = previewSize(format, width, avail);
 
   async function share() {

@@ -6,7 +6,7 @@ import { contrast, F, PICKER_COLORS } from '../constants/theme';
 import { APP_NAME } from '../constants/brand';
 import { useI18n } from '../lib/i18n';
 import { useTheme } from '../lib/theme';
-import { photoPalette, type PhotoPalette } from '../lib/photoPalette';
+import { photoPalette, photoShades, type PhotoPalette } from '../lib/photoPalette';
 
 // Paylaşım görsellerinin (tek parça hikâyesi, kolaj) ortak parçaları:
 // renk seçenekleri, kendi renklerin, Hikâye / X seçimi ve logo.
@@ -65,15 +65,21 @@ export function useShareStyle(visible: boolean, photo?: string | null) {
   const db = useSQLiteContext();
   const { C, colorTheme } = useTheme();
   const [palette, setPalette] = useState<PhotoPalette | null>(null);
+  // Fotoğraftaki renklerin kullanıcının üzerinde oynadığı hâli (o fotoğrafa özel, kaydedilmez)
+  const [photoEdit, setPhotoEdit] = useState<Custom | null>(null);
   // Fotoğraf varsa ilk kutu ondan çıkarılan renklere ayrılır (hesaplanana kadar geçici renkte)
   const hasPhoto = !!photo;
+  const photoCols: Custom | null = photoEdit ?? (palette ? [palette.bg, palette.ink, palette.accent] : null);
+  const photoSwatch: Swatch = photoCols ? { bg: photoCols[0], ink: photoCols[1], accent: photoCols[2] } : PALETTE_WAIT;
   const base = colorTheme !== 'mono' ? [{ bg: C.white, ink: C.black, accent: C.accent }, ...STYLES] : STYLES;
-  const swatches: Swatch[] = hasPhoto ? [palette ?? PALETTE_WAIT, ...base] : base;
+  const swatches: Swatch[] = hasPhoto ? [photoSwatch, ...base] : base;
 
   useEffect(() => {
     if (!visible || !photo) return;
     let alive = true;
-    setPalette(null); // başka fotoğraf seçildi: renkler yeniden hesaplanır
+    // Başka fotoğraf seçildi: renkler o fotoğraftan yeniden hesaplanır, yapılan ayarlar sıfırlanır
+    setPalette(null);
+    setPhotoEdit(null);
     photoPalette(photo)
       .then(p => { if (alive) setPalette(p); })
       .catch(() => {});
@@ -82,8 +88,12 @@ export function useShareStyle(visible: boolean, photo?: string | null) {
   const [styleIdx, setStyleIdx] = useState(0);
   const [custom, setCustom] = useState<Custom>(DEFAULT_CUSTOM);
   const [slotPick, setSlotPick] = useState<0 | 1 | 2>(0);
+  // Fotoğraf kutusunun düzenleme paneli: kutu seçiliyken ona tekrar dokununca açılır/kapanır
+  const [photoPanel, setPhotoPanel] = useState(false);
   const customIdx = swatches.length; // listenin sonundaki "kendi renklerin" kutusu
   const customOn = styleIdx === customIdx;
+  const photoOn = hasPhoto && styleIdx === 0;
+  const photoPanelOn = photoOn && photoPanel && !!photoCols;
 
   useEffect(() => {
     if (!visible) return;
@@ -101,10 +111,23 @@ export function useShareStyle(visible: boolean, photo?: string | null) {
     db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', CUSTOM_KEY, next.join(',')).catch(() => {});
   }
 
+  function selectSwatch(i: number) {
+    if (hasPhoto && i === 0 && styleIdx === 0) setPhotoPanel(v => !v);
+    else {
+      setStyleIdx(i);
+      setPhotoPanel(false);
+    }
+  }
+
   const sw = customOn ? { bg: custom[0], ink: custom[1], accent: custom[2] } : swatches[Math.min(styleIdx, swatches.length - 1)];
   return {
-    swatches, styleIdx, setStyleIdx, custom, customOn, customIdx, slotPick, setSlotPick, saveCustom,
-    pickColor: (c: string) => saveCustom(custom.map((x, i) => (i === slotPick ? c : x)) as Custom),
+    swatches, styleIdx, selectSwatch, custom, customOn, customIdx, slotPick, setSlotPick, saveCustom,
+    hasPhoto, palette, photoCols, photoOn, photoPanelOn,
+    setPhotoCols: (next: Custom) => setPhotoEdit(next),
+    resetPhoto: () => setPhotoEdit(null),
+    photoShades: palette ? photoShades(palette) : [],
+    // Bir renk paneli açık mı (önizleme o kadar küçülür)
+    panelOpen: customOn || photoPanelOn,
     // accent: çerçevedeki ince hat (kenar ile fotoğraf arasında; zeminle yan yana gelmez, her zaman kullanılır)
     // accentText: alt yazı; vurgu zeminde okunmuyorsa yazıda kenar rengi kullanılır
     st: {
@@ -113,7 +136,6 @@ export function useShareStyle(visible: boolean, photo?: string | null) {
       accent: sw.accent ?? sw.ink,
       accentText: sw.accent && contrast(sw.accent, sw.bg) >= 2.5 ? sw.accent : sw.ink,
     },
-    hasPhoto,
   };
 }
 export type ShareStyleState = ReturnType<typeof useShareStyle>;
@@ -141,29 +163,105 @@ export function FormatToggle({ format, onChange }: { format: Format; onChange: (
   );
 }
 
+// Zemin / Kenar / Vurgu düğmeleri ve renk şeridi. "Kendi renklerin" de fotoğraftaki renkler de bunu kullanır.
+function ColorPanel({ colors, onChange, slotPick, setSlotPick, lead }: {
+  colors: Custom;
+  onChange: (next: Custom) => void;
+  slotPick: 0 | 1 | 2;
+  setSlotPick: (i: 0 | 1 | 2) => void;
+  lead?: ReactNode; // şeridin başına konan ek kutular (fotoğraftaki tonlar)
+}) {
+  const { t } = useI18n();
+  const pick = (c: string) => onChange(colors.map((x, i) => (i === slotPick ? c : x)) as Custom);
+  const cell = (c: string, key: string) => {
+    const on = colors[slotPick].toUpperCase() === c.toUpperCase();
+    return (
+      <Pressable key={key} onPress={() => pick(c)} accessibilityLabel={c} style={[s.cell, { backgroundColor: c }, on && s.cellOn]}>
+        {on && <Ionicons name="checkmark" size={14} color={contrast(c, '#000000') > 7 ? '#000000' : '#FFFFFF'} />}
+      </Pressable>
+    );
+  };
+  return (
+    <View style={s.customPanel}>
+      <View style={s.slotRow}>
+        {([0, 1, 2] as const).map(i => (
+          <Pressable
+            key={i}
+            onPress={() => setSlotPick(i)}
+            style={[s.slot, slotPick === i && s.slotOn]}
+            accessibilityState={{ selected: slotPick === i }}
+          >
+            <View style={[s.slotChip, { backgroundColor: colors[i] }]} />
+            <Text style={[s.slotText, slotPick === i && { color: '#FFFFFF' }]}>{t(i === 0 ? 'story.bg' : i === 1 ? 'story.ink' : 'story.accent')}</Text>
+          </Pressable>
+        ))}
+        <Pressable onPress={() => onChange([colors[1], colors[0], colors[2]])} hitSlop={8} style={s.swapBtn} accessibilityLabel={t('custom.swap')}>
+          <Ionicons name="swap-horizontal" size={22} color="#FFFFFF" />
+        </Pressable>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.palette}>
+        {lead}
+        {PICKER_COLORS.map(c => cell(c, c))}
+      </ScrollView>
+      {(contrast(colors[0], colors[1]) < 2 || contrast(colors[0], colors[2]) < 2) && <Text style={s.weak}>{t('custom.weak')}</Text>}
+    </View>
+  );
+}
+
 export function StylePicker({ style }: { style: ShareStyleState }) {
   const { t } = useI18n();
-  const { swatches, styleIdx, setStyleIdx, custom, customOn, customIdx, slotPick, setSlotPick, saveCustom, pickColor, hasPhoto } = style;
+  const {
+    swatches, styleIdx, selectSwatch, custom, customOn, customIdx, slotPick, setSlotPick, saveCustom,
+    hasPhoto, palette, photoCols, photoOn, photoPanelOn, setPhotoCols, resetPhoto, photoShades: shades,
+  } = style;
+
+  // Fotoğraf panelinde şeridin başı: fotoğrafın asıl renklerine dönen kutu, sonra 9 ton, sonra ayraç
+  const photoLead = palette && photoCols ? (
+    <>
+      <Pressable onPress={resetPhoto} accessibilityLabel={t('story.usePhoto')} style={[s.cell, { backgroundColor: palette.bg }]}>
+        <View style={{ width: 14, height: 14, backgroundColor: palette.ink, borderWidth: 3, borderColor: palette.accent }} />
+        <View style={s.miniBadge}>
+          <Ionicons name="refresh" size={8} color="#000000" />
+        </View>
+      </Pressable>
+      {shades.map(c => {
+        const on = photoCols[slotPick].toUpperCase() === c.toUpperCase();
+        return (
+          <Pressable
+            key={`p-${c}`}
+            onPress={() => setPhotoCols(photoCols.map((x, i) => (i === slotPick ? c : x)) as Custom)}
+            accessibilityLabel={c}
+            style={[s.cell, { backgroundColor: c }, on && s.cellOn]}
+          >
+            {on && <Ionicons name="checkmark" size={14} color={contrast(c, '#000000') > 7 ? '#000000' : '#FFFFFF'} />}
+          </Pressable>
+        );
+      })}
+      <View style={s.paletteSep} />
+    </>
+  ) : null;
+
   return (
     <>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.stylesWrap} contentContainerStyle={s.styles}>
         {swatches.map((x, i) => (
           <Pressable
             key={`${x.bg}-${x.ink}-${i}`}
-            onPress={() => setStyleIdx(i)}
+            onPress={() => selectSwatch(i)}
             style={[s.swatch, { backgroundColor: x.bg }, i === styleIdx && s.swatchOn]}
             accessibilityLabel={hasPhoto && i === 0 ? t('story.fromPhoto') : `${t('story.style')} ${i + 1}`}
           >
             <View style={{ width: 16, height: 16, backgroundColor: x.ink, borderWidth: x.accent ? 3 : 0, borderColor: x.accent }} />
             {hasPhoto && i === 0 && (
               <View style={s.editBadge}>
-                <Ionicons name="image" size={11} color="#000000" />
+                {/* Seçiliyken kalem: bir daha dokununca renkleri düzenleme paneli açılır */}
+                <Ionicons name={photoOn ? 'pencil' : 'image'} size={11} color="#000000" />
               </View>
             )}
           </Pressable>
         ))}
         <Pressable
-          onPress={() => setStyleIdx(customIdx)}
+          onPress={() => selectSwatch(customIdx)}
           style={[s.swatch, { backgroundColor: custom[0] }, customOn && s.swatchOn]}
           accessibilityLabel={t('story.custom')}
         >
@@ -174,37 +272,10 @@ export function StylePicker({ style }: { style: ShareStyleState }) {
         </Pressable>
       </ScrollView>
 
-      {customOn && (
-        <View style={s.customPanel}>
-          <View style={s.slotRow}>
-            {([0, 1, 2] as const).map(i => (
-              <Pressable
-                key={i}
-                onPress={() => setSlotPick(i)}
-                style={[s.slot, slotPick === i && s.slotOn]}
-                accessibilityState={{ selected: slotPick === i }}
-              >
-                <View style={[s.slotChip, { backgroundColor: custom[i] }]} />
-                <Text style={[s.slotText, slotPick === i && { color: '#FFFFFF' }]}>{t(i === 0 ? 'story.bg' : i === 1 ? 'story.ink' : 'story.accent')}</Text>
-              </Pressable>
-            ))}
-            <Pressable onPress={() => saveCustom([custom[1], custom[0], custom[2]])} hitSlop={8} style={s.swapBtn} accessibilityLabel={t('custom.swap')}>
-              <Ionicons name="swap-horizontal" size={22} color="#FFFFFF" />
-            </Pressable>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.palette}>
-            {PICKER_COLORS.map(c => {
-              const on = custom[slotPick].toUpperCase() === c.toUpperCase();
-              return (
-                <Pressable key={c} onPress={() => pickColor(c)} accessibilityLabel={c} style={[s.cell, { backgroundColor: c }, on && s.cellOn]}>
-                  {on && <Ionicons name="checkmark" size={14} color={contrast(c, '#000000') > 7 ? '#000000' : '#FFFFFF'} />}
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-          {(contrast(custom[0], custom[1]) < 2 || contrast(custom[0], custom[2]) < 2) && <Text style={s.weak}>{t('custom.weak')}</Text>}
-        </View>
+      {photoPanelOn && photoCols && (
+        <ColorPanel colors={photoCols} onChange={setPhotoCols} slotPick={slotPick} setSlotPick={setSlotPick} lead={photoLead} />
       )}
+      {customOn && <ColorPanel colors={custom} onChange={saveCustom} slotPick={slotPick} setSlotPick={setSlotPick} />}
     </>
   );
 }
@@ -373,7 +444,12 @@ const s = StyleSheet.create({
   slotChip: { width: 20, height: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' },
   slotText: { fontFamily: F.semi, fontSize: 13, color: '#AAAAAA' },
   swapBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
-  palette: { flexDirection: 'row', gap: 6, paddingTop: 10, paddingRight: 20 },
+  palette: { flexDirection: 'row', gap: 6, paddingTop: 10, paddingRight: 20, alignItems: 'center' },
+  paletteSep: { width: 1, height: 24, backgroundColor: '#555555', marginHorizontal: 4 },
+  miniBadge: {
+    position: 'absolute', right: -1, bottom: -1, width: 12, height: 12, backgroundColor: '#FFFFFF',
+    alignItems: 'center', justifyContent: 'center',
+  },
   cell: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
   cellOn: { borderWidth: 2.5, borderColor: '#FFFFFF' },
   weak: { fontFamily: F.regular, fontSize: 11, color: '#E0A0A0', marginTop: 8, lineHeight: 15 },
